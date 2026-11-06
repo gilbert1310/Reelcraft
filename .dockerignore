@@ -1,0 +1,9 @@
+web
+supabase
+lovable
+**/.venv
+**/__pycache__
+**/.pytest_cache
+service/tests
+**/*.mp4
+.git
