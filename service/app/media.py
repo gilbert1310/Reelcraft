@@ -93,11 +93,16 @@ def probe(path: str | Path) -> VideoInfo:
                      s.get("codec_name", ""), s.get("pix_fmt", ""), data.get("format", {}).get("format_name", ""))
 
 
+DECODABLE_CODECS = ("h264", "hevc", "vp9", "mpeg4")
+EIGHT_BIT_420 = ("yuv420p", "yuvj420p", "nv12")
+
+
 def needs_normalising(info: VideoInfo) -> bool:
-    """Browser recordings (WebM, often without a duration) and 10-bit/HEVC camera files
-    decode unreliably frame-by-frame; convert those to 8-bit H.264 MP4 first."""
+    """Browser recordings (WebM, often without a duration) and 10-bit camera files decode
+    unreliably frame-by-frame; convert only those to 8-bit H.264 MP4. Re-encoding is slow
+    and memory-hungry, so anything the frame reader handles well is left alone."""
     return (info.duration <= 0 or info.frames <= 0 or "webm" in info.container or "matroska" in info.container
-            or info.codec not in ("h264",) or info.pix_fmt not in ("yuv420p", "yuvj420p"))
+            or info.codec not in DECODABLE_CODECS or info.pix_fmt not in EIGHT_BIT_420)
 
 
 def normalise(path: str | Path) -> Path:
@@ -107,8 +112,10 @@ def normalise(path: str | Path) -> Path:
     if not needs_normalising(info):
         return path
     out = path.with_name(path.stem + "_norm.mp4")
-    ffmpeg("-i", str(path), "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast",
-           "-crf", "17", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", str(out))
+    # Few threads and a short lookahead keep ffmpeg's memory use low on small servers.
+    ffmpeg("-threads", "2", "-i", str(path), "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264",
+           "-preset", "veryfast", "-crf", "17", "-x264-params", "rc-lookahead=10:threads=2",
+           "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", str(out))
     return out
 
 
@@ -195,8 +202,12 @@ def to_jpeg(img: np.ndarray, max_side: int = 512, quality: int = 82) -> bytes:
 def ffmpeg(*args: str) -> None:
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args]
     r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode < 0 or r.returncode == 137:
+        # Killed by a signal; on small servers that is almost always the out-of-memory killer.
+        raise MediaError("Video processing was stopped because the server ran out of memory. "
+                         "Give the video service more memory (2 GB or more) and try again.")
     if r.returncode != 0:
-        raise MediaError(f"ffmpeg failed: {r.stderr.strip()[-400:]}")
+        raise MediaError(f"ffmpeg failed (exit {r.returncode}): {r.stderr.strip()[-400:] or 'no error output'}")
 
 
 _FILTERS: set[str] | None = None

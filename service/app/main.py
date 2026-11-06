@@ -60,9 +60,10 @@ def _start(bg: BackgroundTasks, job: Job, kind: str, work, ref: dict) -> dict:
 
 @app.get("/health")
 def health() -> dict:
-    from .embed import embedder_name
+    # Don't load the image model here: it's ~600 MB and health checks shouldn't cost memory.
+    from . import embed
     return {"ok": True, "vision_provider": settings.vision_provider, "vision_model": settings.vision_model,
-            "embedder": embedder_name()}
+            "embedder": settings.embedder, "embedder_loaded": embed._embedder is not None}
 
 
 # ---------- Stage 1 ----------

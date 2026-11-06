@@ -52,3 +52,19 @@ def test_webm_and_hevc_are_normalised(media, tmp_path):
     out = normalise(webm)
     assert out.suffix == ".mp4" and probe(out).codec == "h264" and probe(out).duration > 1.5
     assert normalise(media["user_a"]) == media["user_a"]  # already fine: untouched
+
+
+def test_health_does_not_load_the_model():
+    from app import embed
+    embed._embedder = None
+    r = TestClient(main.app).get("/health")
+    assert r.status_code == 200 and r.json()["ok"] and embed._embedder is None
+
+
+def test_killed_ffmpeg_reports_out_of_memory(monkeypatch):
+    import subprocess
+    import pytest
+    from app import media
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, -9, "", ""))
+    with pytest.raises(media.MediaError, match="ran out of memory"):
+        media.ffmpeg("-i", "x")
