@@ -10,6 +10,7 @@ export default function ShootPlan() {
   const { uploadId } = useParams();
   const nav = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const { data, reload } = useLoad(async () => {
     const upload = must(await supabase.from("uploads").select("*").eq("id", uploadId!).single()) as Upload;
     const setups = upload.status === "done"
@@ -21,12 +22,16 @@ export default function ShootPlan() {
   useLive("uploads", busy ? `id=eq.${uploadId}` : null, reload, 3000);
 
   async function retry() {
+    if (retrying) return;
     setError(null);
+    setRetrying(true);
     try {
       await action("start-analysis", { upload_id: uploadId });
-      reload();
+      await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetrying(false);
     }
   }
 
@@ -43,14 +48,23 @@ export default function ShootPlan() {
 
   if (!data) return <Page back="/"><Busy title="Loading…" /></Page>;
   const { upload, setups } = data;
+  // A job can be lost if the video service restarts; after a while, offer a restart.
+  const minutesRunning = (Date.now() - new Date(upload.updated_at).getTime()) / 60000;
+  const tooLong = busy && minutesRunning > 10; // matches STALE_MINUTES in the edge function
 
   return (
     <Page back="/" title="Your Shoot Plan">
       {busy && <Busy title="Breaking down your reel…" detail="Finding the cuts and grouping them into setups. This takes a minute or two." />}
+      {tooLong && (
+        <div className="stack">
+          <div className="notice warn">This is taking much longer than usual. The video service may have restarted.</div>
+          <button className="btn block" onClick={retry} disabled={retrying}>{retrying ? "Restarting…" : "Restart analysis"}</button>
+        </div>
+      )}
       {upload.status === "failed" && (
         <div className="stack">
           <ErrorBox>{upload.error || "Something went wrong."}</ErrorBox>
-          <button className="btn primary block" onClick={retry}>Try again</button>
+          <button className="btn primary block" onClick={retry} disabled={retrying}>{retrying ? "Starting…" : "Try again"}</button>
         </div>
       )}
       {upload.status === "link_failed" && (

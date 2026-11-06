@@ -97,6 +97,24 @@ async function startJob(db: SupabaseClient, userId: string, kind: string, refId:
   return job.id;
 }
 
+const STALE_MINUTES = 10;
+
+/**
+ * A job can be lost if the video service restarts mid-way (redeploy, out of memory), and
+ * then no result ever comes back. Refuse a duplicate while the latest job is recent; once
+ * it's older than STALE_MINUTES, mark it failed so a new one can start.
+ */
+async function failIfStale(db: SupabaseClient, refId: string, busyMessage: string): Promise<void> {
+  const { data: last } = await db.from("jobs").select("id,status,created_at").eq("ref_id", refId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (last && last.status === "processing") {
+    const ageMin = (Date.now() - new Date(last.created_at).getTime()) / 60000;
+    if (ageMin < STALE_MINUTES) throw new HttpError(409, `${busyMessage} (started ${Math.max(1, Math.round(ageMin))} min ago)`);
+    await db.from("jobs").update({ status: "failed", error: `No result after ${Math.round(ageMin)} min; restarted`,
+      finished_at: new Date().toISOString() }).eq("id", last.id);
+  }
+}
+
 async function setupsAndCuts(db: SupabaseClient, uploadId: string) {
   const setups = must(await db.from("setups").select("*").eq("upload_id", uploadId).order("setup_number"), "setups") as Row[];
   const cuts = must(await db.from("cuts").select("*").eq("upload_id", uploadId).order("order_index"), "cuts") as Row[];
@@ -125,7 +143,7 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<Row>> = {
   // Stage 1 ------------------------------------------------------------------
   async "start-analysis"({ db, userId, body }) {
     const up = await owned(db, "uploads", body.upload_id, userId);
-    if (up.status === "processing") throw new HttpError(409, "Already analysing this reel");
+    if (up.status === "processing") await failIfStale(db, up.id, "Already analysing this reel");
     const payload: Row = { upload_id: up.id };
     if (up.source_url) payload.source_url = up.source_url;
     else payload.video_url = await signedUrl(db, "reels", up.storage_path, userId);
