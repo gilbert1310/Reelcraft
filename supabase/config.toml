@@ -1,0 +1,7 @@
+# Only the settings ReelCraft needs; merge into your project's config.toml if you have one.
+[functions.reelcraft]
+verify_jwt = true
+
+[functions.reelcraft-callback]
+# Called by the Python service, authenticated with REELCRAFT_CALLBACK_SECRET instead of a user JWT.
+verify_jwt = false
