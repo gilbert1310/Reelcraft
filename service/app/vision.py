@@ -225,11 +225,36 @@ _client = None
 _fallbacks_ok = True
 
 
+def clean_api_key(raw: str | None) -> str:
+    """Forgive common paste mistakes: spaces, newlines, quotes, or the variable name itself."""
+    key = (raw or "").strip().strip('"').strip("'").strip()
+    if key.upper().startswith("ANTHROPIC_API_KEY="):
+        key = key.split("=", 1)[1].strip().strip('"').strip("'")
+    return key
+
+
+def key_status() -> str:
+    """A safe description of the configured key for /health (never shows the key itself)."""
+    import os
+    raw = os.getenv("ANTHROPIC_API_KEY")
+    key = clean_api_key(raw)
+    if not key:
+        return "missing"
+    if not key.startswith("sk-ant-"):
+        return "set, but doesn't look like an Anthropic key (should start with sk-ant-)"
+    if len(key) < 90:
+        return f"set, but looks too short ({len(key)} characters), maybe cut off while copying"
+    tidied = " (tidied: removed extra spaces or quotes)" if key != raw else ""
+    return f"looks valid ({len(key)} characters){tidied}"
+
+
 def _anthropic():
     global _client
     if _client is None:
+        import os
         import anthropic
-        _client = anthropic.Anthropic(max_retries=3, timeout=300)  # reads ANTHROPIC_API_KEY
+        _client = anthropic.Anthropic(api_key=clean_api_key(os.getenv("ANTHROPIC_API_KEY")) or None,
+                                      max_retries=3, timeout=300)
     return _client
 
 

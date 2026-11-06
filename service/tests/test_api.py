@@ -68,3 +68,18 @@ def test_killed_ffmpeg_reports_out_of_memory(monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, -9, "", ""))
     with pytest.raises(media.MediaError, match="ran out of memory"):
         media.ffmpeg("-i", "x")
+
+
+def test_api_key_paste_mistakes_are_tidied(monkeypatch):
+    from app import vision
+    real = "sk-ant-api03-" + "x" * 95
+    for pasted in [f" {real}\n", f'"{real}"', f"ANTHROPIC_API_KEY={real}"]:
+        assert vision.clean_api_key(pasted) == real
+    monkeypatch.setenv("ANTHROPIC_API_KEY", f' "{real}" ')
+    assert vision.key_status().startswith("looks valid") and "tidied" in vision.key_status()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "YOUR-KEY-FROM-console.anthropic.com")
+    assert "doesn't look like" in vision.key_status()
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    assert vision.key_status() == "missing"
+    body = TestClient(main.app).get("/health").json()
+    assert body["anthropic_key"] == "missing" and "sk-ant" not in str(body).replace("start with sk-ant-", "")
