@@ -21,7 +21,7 @@ export default function ShootPlan() {
       ? must(await supabase.from("setups").select("*").eq("upload_id", uploadId!).order("setup_number")) as Setup[]
       : [];
     const cuts = done
-      ? must(await supabase.from("cuts").select("id,order_index,start_time,end_time,thumbnail_path").eq("upload_id", uploadId!)
+      ? must(await supabase.from("cuts").select("id,order_index,start_time,end_time,thumbnail_path,speed,transition_in").eq("upload_id", uploadId!)
           .order("order_index")) as Cut[]
       : [];
     return { upload, setups, cuts };
@@ -104,9 +104,7 @@ export default function ShootPlan() {
               </div>
             </article>
           ))}
-          {graphics.length > 0 && (
-            <p className="muted small">Not filmed: {graphics.map((g) => g.description).join(" ")}</p>
-          )}
+          <EditEffects cuts={data.cuts} graphics={graphics} />
           <ErrorBox>{error}</ErrorBox>
           <button className="btn primary big block" onClick={startShooting}>Start Shooting</button>
           {!showRedo ? (
@@ -175,6 +173,29 @@ function Beats({ beats, cuts, videoPath, description }: {
           );
         })}
       </ol>
+    </div>
+  );
+}
+
+/** What the edit adds afterwards, kept apart from what gets filmed. */
+function EditEffects({ cuts, graphics }: { cuts: Cut[]; graphics: Setup[] }) {
+  const list = (ns: number[]) => ns.map((n) => n + 1).join(", ");
+  const slow = cuts.filter((c) => Number(c.speed) < 0.99).map((c) => c.order_index);
+  const byType = new Map<string, number[]>();
+  for (const c of cuts) {
+    if (c.order_index > 0 && c.transition_in && c.transition_in !== "cut") {
+      byType.set(c.transition_in, [...(byType.get(c.transition_in) ?? []), c.order_index]);
+    }
+  }
+  const items: string[] = [];
+  if (slow.length) items.push(`Slow motion on cut ${list(slow)}. Just film those takes as normal video at 60fps.`);
+  for (const [t, ns] of byType) items.push(`${t[0].toUpperCase()}${t.slice(1)} transition into cut ${list(ns)}.`);
+  for (const g of graphics) items.push(g.description || "A graphic added in the edit.");
+  if (!items.length) return null;
+  return (
+    <div className="notice stack" style={{ gap: 6 }}>
+      <strong>Done in the edit (don't film these)</strong>
+      <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{items.map((t, i) => <li key={i}>{t}</li>)}</ul>
     </div>
   );
 }
