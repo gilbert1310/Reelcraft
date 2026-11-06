@@ -60,11 +60,17 @@ class SetupBreakdown(SetupDirection):
     cuts: list[CutDetail] = Field(description="One entry per cut shown, by cut number")
 
 
+class PlannedBeat(BaseModel):
+    text: str = Field(description="One direction to call out to the subject, in plain words")
+    cut_numbers: list[int] = Field(description="The cuts in the reel that show this beat")
+
+
 class PlannedSetup(BaseModel):
     setup_number: int
     cut_numbers: list[int] = Field(description="Every cut filmed in this one continuous take")
-    description: str = Field(description="Where to put the camera and how to film, then 'Direct her/him "
-                             "through:' and the numbered beats to call out, in order")
+    description: str = Field(description="Where to put the camera and how to film (no beats here)")
+    beats: list[PlannedBeat] = Field(default_factory=list,
+                                     description="The directions to call out during the take, in order")
     angle: Angle
     subject: str
     film_duration_seconds: float
@@ -184,8 +190,8 @@ SHOT_PLANNER = (
     "and everything the subject does there.\n"
     "Step 2: plan the takes. For each take give the cut numbers it covers (every cut appears exactly once "
     "across takes and graphics); a description that says where to put the camera and how to film (height, "
-    "framing and lens feel, movement, light, focus, frame rate), followed by 'Direct her through:' (or "
-    "him/them) and the numbered beats to call out in order, so a beginner can run the take; seconds to film "
+    "framing and lens feel, movement, light, focus, frame rate); beats: the directions to call out to the "
+    "subject in order, each with the cut numbers that show it, so a beginner can run the take; seconds to film "
     "so every beat is covered with margin; one practical beginner tip; and a one-line reason these cuts "
     "come from one take. Number takes in the order they first appear. For each cut give a few-word action, "
     "the transition into it (keep the detected one unless the frames clearly show otherwise; 'match' for "
@@ -358,7 +364,8 @@ def _mock(schema: type[T], parts: list[dict]) -> T:
             groups = [cuts]
         return ShotPlan(shoot_notes="mock", summary=f"Filmed as {len(groups)} takes (mock).", setups=[
             PlannedSetup(setup_number=k + 1, cut_numbers=g, description="Mock take.", angle="front",
-                         subject="subject", film_duration_seconds=10, beginner_tip="Mock tip.", reason="mock")
+                         subject="subject", film_duration_seconds=10, beginner_tip="Mock tip.", reason="mock",
+                         beats=[PlannedBeat(text=f"Mock beat for cut {n}", cut_numbers=[n]) for n in g])
             for k, g in enumerate(groups)],
             cuts=[CutDetail(cut_number=n, action="moves", transition_in="cut", slow_motion=False) for n in cuts])
     if schema is MergeVerdict:

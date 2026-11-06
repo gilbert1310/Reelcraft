@@ -223,6 +223,11 @@ export default function ShootMode() {
             <span className="small muted">Target {Math.round(target)}s</span>
           </div>
           <p className="small" style={{ margin: "6px 0 0" }}>{current.description}</p>
+          {current.beats && current.beats.length > 0 && (
+            <ol className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+              {current.beats.map((b, i) => <li key={i}>{b.text}</li>)}
+            </ol>
+          )}
         </div>
         {!online && <span className="badge warn" style={{ justifySelf: "start" }}>No signal: takes will upload later</span>}
         {pending.length > 0 && <span className="badge warn" style={{ justifySelf: "start" }}>Waiting for signal: {pending.length} take(s)</span>}

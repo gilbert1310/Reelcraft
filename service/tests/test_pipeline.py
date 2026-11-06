@@ -234,3 +234,12 @@ def test_graphics_are_not_takes_and_render_black(media, tmp_path, monkeypatch):
     res2 = assemble.assemble(p, tmp_path)
     assert not any(5 in r["cut_order_indexes"] for r in res2["reshoots"])  # the end card never asks for a reshoot
     assert res2["cut_matches"][5]["fixes"][0].startswith("Graphic")
+
+
+def test_takes_carry_beats_linked_to_their_cuts(media):
+    res = _analysis(media)
+    for s in res["setups"]:
+        members = {c["order_index"] for c in res["cuts"] if c["setup_number"] == s["setup_number"]}
+        assert s["beats"], s
+        for b in s["beats"]:
+            assert b["text"] and set(b["cuts"]) <= members

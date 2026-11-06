@@ -3,8 +3,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { action, deleteUpload, must } from "../lib/api";
 import { useLive, useLoad } from "../lib/hooks";
-import type { Setup, Upload } from "../lib/types";
+import type { Beat, Cut, Setup, Upload } from "../lib/types";
 import { AngleBadge, Busy, ErrorBox, Page, Thumb } from "../components/ui";
+import { Snippet } from "../components/Snippet";
 
 export default function ShootPlan() {
   const { uploadId } = useParams();
@@ -15,10 +16,15 @@ export default function ShootPlan() {
   const [feedback, setFeedback] = useState("");
   const { data, reload } = useLoad(async () => {
     const upload = must(await supabase.from("uploads").select("*").eq("id", uploadId!).single()) as Upload;
-    const setups = upload.status === "done"
+    const done = upload.status === "done";
+    const setups = done
       ? must(await supabase.from("setups").select("*").eq("upload_id", uploadId!).order("setup_number")) as Setup[]
       : [];
-    return { upload, setups };
+    const cuts = done
+      ? must(await supabase.from("cuts").select("id,order_index,start_time,end_time,thumbnail_path").eq("upload_id", uploadId!)
+          .order("order_index")) as Cut[]
+      : [];
+    return { upload, setups, cuts };
   }, [uploadId]);
   const busy = !data || data.upload.status === "queued" || data.upload.status === "processing";
   useLive("uploads", busy ? `id=eq.${uploadId}` : null, reload, 3000);
@@ -90,7 +96,9 @@ export default function ShootPlan() {
               <Thumb path={s.thumbnail_path} alt={`Setup ${s.setup_number}`} />
               <div className="grow stack" style={{ gap: 6 }}>
                 <div className="row" style={{ gap: 8 }}><strong>Take {s.setup_number}</strong><AngleBadge angle={s.angle} /></div>
-                <Directions text={s.description} />
+                {s.beats?.length
+                  ? <Beats beats={s.beats} cuts={data.cuts} videoPath={upload.storage_path} description={s.description} />
+                  : <Directions text={s.description} />}
                 <span className="small"><strong>Film about {Math.round(Number(s.film_duration_seconds))} seconds</strong></span>
                 {s.beginner_tip && <div className="tip"><span aria-hidden>💡</span><span>{s.beginner_tip}</span></div>}
               </div>
@@ -141,6 +149,32 @@ export function Directions({ text }: { text: string | null }) {
       <p style={{ margin: 0 }}>{m[1].trim()}</p>
       <strong className="small">{m[2]}</strong>
       <ol style={{ margin: 0, paddingLeft: 20 }}>{beats.map((b, i) => <li key={i}>{b}</li>)}</ol>
+    </div>
+  );
+}
+
+/** How to film, then each direction with a snippet of the reference moment it should match. */
+function Beats({ beats, cuts, videoPath, description }: {
+  beats: Beat[]; cuts: Cut[]; videoPath: string | null; description: string | null;
+}) {
+  const byIndex = new Map(cuts.map((c) => [c.order_index, c]));
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {description && <p style={{ margin: 0 }}>{description}</p>}
+      <strong className="small">Direct her through:</strong>
+      <ol className="stack" style={{ margin: 0, paddingLeft: 0, listStyle: "none", gap: 10 }}>
+        {beats.map((b, i) => {
+          const cut = b.cuts.map((k) => byIndex.get(k)).find(Boolean);
+          return (
+            <li key={i} className="row" style={{ alignItems: "flex-start", gap: 10 }}>
+              {cut ? <Snippet videoPath={videoPath} posterPath={cut.thumbnail_path} start={Number(cut.start_time)}
+                end={Number(cut.end_time)} label={`Beat ${i + 1}: ${b.text}`} /> : <div style={{ width: 64 }} />}
+              <span><strong>{i + 1}.</strong> {b.text}
+                {b.cuts.length > 0 && <span className="muted small"> · cut {b.cuts.map((k) => k + 1).join(", ")}</span>}</span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

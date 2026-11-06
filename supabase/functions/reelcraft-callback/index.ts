@@ -73,6 +73,7 @@ const HANDLERS: Record<string, Handler> = {
       upload_id: uploadId, user_id: userId, setup_number: s.setup_number, description: s.description,
       angle: s.angle, subject: s.subject, motion: s.motion, film_duration_seconds: s.film_duration_seconds,
       beginner_tip: s.beginner_tip, embedding: toVector(s.embedding), is_graphic: Boolean(s.is_graphic),
+      beats: Array.isArray(s.beats) ? s.beats : [],
     }))).select("id,setup_number"), "insert setups") as Row[];
     const setupId = new Map(setupRows.map((s) => [s.setup_number, s.id]));
 

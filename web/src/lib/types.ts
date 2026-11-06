@@ -9,8 +9,10 @@ export interface Upload {
 export interface Setup {
   id: string; upload_id: string; setup_number: number; description: string | null; angle: string | null;
   subject: string | null; motion: string | null; film_duration_seconds: number | null; beginner_tip: string | null;
-  thumbnail_path: string | null; is_graphic: boolean;
+  thumbnail_path: string | null; is_graphic: boolean; beats: Beat[] | null;
 }
+
+export interface Beat { text: string; cuts: number[] }
 
 export interface Cut {
   id: string; setup_id: string; setup_number: number; order_index: number; start_time: number; end_time: number;

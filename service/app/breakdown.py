@@ -349,7 +349,7 @@ def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
 
 
 def _setup_row(cuts: list[Cut], members: list[int], n: int, description: str, angle: str, subject: str,
-               film_seconds: float, tip: str, is_graphic: bool = False) -> dict:
+               film_seconds: float, tip: str, is_graphic: bool = False, beats: list[dict] | None = None) -> dict:
     used = sum(cuts[i].length / cuts[i].speed for i in members)
     emb = normalize(np.mean([cuts[i].embedding for i in members], axis=0))
     return {
@@ -360,6 +360,7 @@ def _setup_row(cuts: list[Cut], members: list[int], n: int, description: str, an
         # Always leave the editor at least 2x what the edit uses, and never under 5 seconds.
         "film_duration_seconds": 0 if is_graphic else round(max(film_seconds, used * 2, 5.0), 1),
         "is_graphic": is_graphic,
+        "beats": beats or [],
         "beginner_tip": tip,
         "motion": describe_motion(cuts[members[0]].stats),
         "embedding": _vec(emb),
@@ -384,8 +385,11 @@ def _setups_from_plan(cuts: list[Cut], plan: vision.ShotPlan) -> list[dict]:
         members = sorted(k - 1 for k in ps.cut_numbers)
         for i in members:
             cuts[i].group = n - 1
+        # Each beat points at the cuts that show it (0-based, only cuts of this take) for preview snippets.
+        member_set = set(members)
+        beats = [{"text": b.text, "cuts": sorted({k - 1 for k in b.cut_numbers} & member_set)} for b in ps.beats if b.text.strip()]
         setups.append(_setup_row(cuts, members, n, ps.description, ps.angle, ps.subject,
-                                 ps.film_duration_seconds, ps.beginner_tip))
+                                 ps.film_duration_seconds, ps.beginner_tip, beats=beats))
     if plan.graphics:
         members = sorted(k - 1 for k in plan.graphics)
         n = len(setups) + 1

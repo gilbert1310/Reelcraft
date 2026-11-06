@@ -55,8 +55,10 @@ function analyse(up) {
       "Walk heel-to-toe and keep your elbows tucked in. It's the cheapest stabiliser there is.",
       "Tap to lock focus on the eyes before you start the push-in.",
       "Shoot at 60fps so this can become a slow-motion beat.",
-    ][i], thumbnail_path: `${UID}/${up.id}/cut_${i}.jpg`,
+    ][i], thumbnail_path: `${UID}/${up.id}/cut_${i}.jpg`, is_graphic: false,
+    beats: [{ text: `Beat one of take ${i + 1}`, cuts: [i] }, { text: `Beat two of take ${i + 1}`, cuts: [i + 3] }],
   }));
+  up.storage_path = up.storage_path || `${UID}/reference.mp4`;  // pretend the reference video is stored
   db.setups.push(...setups);
   for (let k = 0; k < 6; k++) {
     const s = setups[k % 3];
@@ -253,10 +255,19 @@ await step("stage 1: paste link → shoot plan", async () => {
   await page.getByRole("button", { name: "Analyse" }).click();
   await page.getByText("Breaking down your reel…").waitFor();
   await shot("03-plan-busy");
-  await page.getByText("Take 3").waitFor({ timeout: 15000 });
+  await page.getByText("Take 3", { exact: true }).waitFor({ timeout: 15000 });
   await page.getByText("This reel uses").waitFor();
+  await page.getByText("Beat one of take 1").waitFor();
   await page.waitForTimeout(400);
   await shot("04-shoot-plan");
+  await page.getByRole("button", { name: "Play: Beat 1: Beat one of take 1" }).click();
+  await page.locator('video[aria-label="Beat 1: Beat one of take 1"]').waitFor();
+  await page.waitForFunction(() => {
+    const v = document.querySelector('video[aria-label="Beat 1: Beat one of take 1"]');
+    return v && v.currentTime > 0.1;
+  }, null, { timeout: 10000 });
+  await page.waitForTimeout(600);
+  await shot("04b-snippet-playing");
 });
 
 await step("stage 2: start shooting → project", async () => {
@@ -336,14 +347,14 @@ await step("plans: no duplicates, re-analyse with a note, delete", async () => {
   await page.getByRole("button", { name: "Analyse" }).click();
   await page.getByText("Your Shoot Plan").waitFor();
   if (db.uploads.length !== 1) throw new Error(`expected 1 upload, found ${db.uploads.length}`);
-  await page.getByText("Take 1").waitFor({ timeout: 15000 });
+  await page.getByText("Take 1", { exact: true }).waitFor({ timeout: 15000 });
   await page.getByRole("button", { name: "Not right? Re-analyse" }).click();
   await page.getByPlaceholder(/Takes 1 and 4/).fill("Take 1 and take 3 are the same walk.");
   await shot("16-reanalyse");
   await page.getByRole("button", { name: "Re-analyse", exact: true }).click();
   await page.getByText("Breaking down your reel…").waitFor();
   if (db.uploads[0].last_feedback !== "Take 1 and take 3 are the same walk.") throw new Error("feedback not sent");
-  await page.getByText("Take 1").waitFor({ timeout: 15000 });
+  await page.getByText("Take 1", { exact: true }).waitFor({ timeout: 15000 });
   // Delete from the plan page.
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Delete this reel and its plan" }).click();
