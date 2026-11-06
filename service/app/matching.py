@@ -24,7 +24,7 @@ def index_clip(reader: FrameReader, rate: float = 2.0, max_samples: int = 240) -
     times = np.linspace(0, max(dur - 1.0 / reader.fps, 0), n)
     frames, kept = [], []
     for t in times:
-        f = reader.frame_at(t)
+        f = reader.small_at(t)
         if f is not None:
             frames.append(f)
             kept.append(t)

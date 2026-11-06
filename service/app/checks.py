@@ -86,7 +86,7 @@ def coverage_check(path: str, setup: dict, cuts: list[dict], use_ai: bool = True
                      "part of the user's clip that seems to match it."]
             for c, pc in zip(cuts, per_cut):
                 ref_img = _fetch_image(c.get("thumbnail_url"))
-                user = [r.frame_at(t) for t in (pc["match_start"] + 0.1, pc["match_end"] - 0.1)]
+                user = [r.small_at(t) for t in (pc["match_start"] + 0.1, pc["match_end"] - 0.1)]
                 parts.append(f"Reference cut {c['order_index'] + 1}: needs '{c.get('action') or 'the same moment'}'")
                 if ref_img is not None:
                     parts.append(ref_img)
@@ -122,7 +122,7 @@ def suggest_setup(path: str, setups: list[dict], use_ai: bool = True) -> dict:
     with FrameReader(path) as r:
         idx = index_clip(r, rate=1.0, max_samples=60)
         clip_vec = normalize(idx.vecs.mean(axis=0))
-        frames = [r.frame_at(t) for t in np.linspace(0.15, 0.85, 3) * r.duration]
+        frames = [r.small_at(t) for t in np.linspace(0.15, 0.85, 3) * r.duration]
     ranking = sorted(({"setup_number": s["setup_number"],
                        "score": round(float(clip_vec @ normalize(np.array(s["embedding"], np.float32))), 4)}
                       for s in setups if s.get("embedding")), key=lambda x: -x["score"])

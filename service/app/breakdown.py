@@ -72,7 +72,7 @@ def fingerprint(reader: FrameReader, cuts: list[Cut]) -> None:
     all_frames, owners = [], []
     for c in cuts:
         times = sample_times(c.start, c.end, 3)
-        c.frames = [f for f in (reader.frame_at(t) for t in times) if f is not None]
+        c.frames = [f for f in (reader.small_at(t) for t in times) if f is not None]
         if not c.frames:
             raise RuntimeError(f"Could not read frames for cut {c.index + 1}")
         all_frames += c.frames
@@ -153,15 +153,18 @@ def _sharp(img: np.ndarray) -> float:
 
 def detect_transition(reader: FrameReader, boundary: float, cut: Cut) -> str:
     dt = 1.0 / reader.fps
-    prev, mid, nxt = (reader.frame_at(boundary - 6 * dt), reader.frame_at(boundary),
-                      reader.frame_at(boundary + 6 * dt))
+    prev, mid, nxt = (reader.small_at(boundary - 6 * dt), reader.small_at(boundary),
+                      reader.small_at(boundary + 6 * dt))
     if prev is None or mid is None or nxt is None:
         return "cut"
     p, m, n = (cv2.resize(x, (96, 96)).astype(np.float32) for x in (prev, mid, nxt))
     blend_err = np.abs(m - (p + n) / 2).mean()
     if blend_err < 0.6 * min(np.abs(m - p).mean(), np.abs(m - n).mean()) and np.abs(p - n).mean() > 12:
         return "dissolve"
-    edge = min(_sharp(reader.frame_at(boundary - dt)), _sharp(reader.frame_at(boundary + dt)))
+    around = [reader.small_at(boundary - dt), reader.small_at(boundary + dt)]
+    if any(f is None for f in around):
+        return "cut"
+    edge = min(_sharp(f) for f in around)
     typical = np.median([_sharp(f) for f in cut.frames])
     if typical > 20 and edge < 0.3 * typical:
         return "whip"
@@ -260,7 +263,7 @@ def analyze(path: str) -> dict:
             c.stats = analyze_segment(reader, c.start, c.end)
         for c in cuts[1:]:
             c.transition_in = detect_transition(reader, c.start, c)
-        reel_frames = [reader.frame_at(t) for t in np.linspace(0.05, 0.95, 6) * info.duration]
+        reel_frames = [reader.small_at(t) for t in np.linspace(0.05, 0.95, 6) * info.duration]
         reel_frames = [f for f in reel_frames if f is not None]
 
     groups = verify_groups(cuts, cluster(cuts, settings.group_threshold))

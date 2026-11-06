@@ -46,7 +46,7 @@ def label_clips(clips: list[Clip]) -> list[dict]:
         parts = ["Raw clips from a videographer's shoot. Each clip shows 3 frames (start, middle, end)."]
         for i, cl in enumerate(batch, b + 1):
             with FrameReader(cl.path) as r:
-                frames = [r.frame_at(t) for t in np.linspace(0.1, 0.9, 3) * r.duration]
+                frames = [r.small_at(t) for t in np.linspace(0.1, 0.9, 3) * r.duration]
             parts += [f"Clip {i}: ({cl.info.duration:.1f}s)", *[f for f in frames if f is not None]]
         parts.append("Label every clip: subject, action, camera angle, shot type, usable quality 1-10, "
                      "and a few tags (e.g. walk, close-up, dance, car, venue, detail, couple).")

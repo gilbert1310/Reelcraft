@@ -19,6 +19,9 @@ class MediaError(Exception):
     pass
 
 
+ANALYSIS_MAX_SIDE = 640
+
+
 def download(url: str, dest: str | Path, max_mb: int = 2048) -> Path:
     """Stream a (signed) URL to disk."""
     dest = Path(dest)
@@ -165,6 +168,12 @@ class FrameReader:
 
     def frame_at(self, t: float) -> np.ndarray | None:
         return self.frame_at_index(int(round(t * self.fps)))
+
+    def small_at(self, t: float, max_side: int = ANALYSIS_MAX_SIDE) -> np.ndarray | None:
+        """A downscaled frame for analysis. Holding full 1080x1920 (or 4K) frames in lists
+        costs 6-25 MB each; every analysis step works at 640 px or less."""
+        f = self.frame_at(t)
+        return None if f is None else resize_max(f, max_side)
 
     def close(self) -> None:
         self.cap.release()
