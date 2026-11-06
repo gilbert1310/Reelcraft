@@ -102,6 +102,18 @@ def test_slow_motion_and_transitions_render(media, tmp_path, monkeypatch):
     assert any(f.startswith("Slow motion") for f in out["cut_matches"][1]["fixes"])
     fx = (tmp_path / "timeline.fcpxml").read_text()
     assert "<timeMap>" in fx
+    root = ET.fromstring(fx.split("\n", 2)[2])
+    spine = root.find(".//spine")
+    kinds = [el.tag for el in spine]
+    # a real cross dissolve sits between cut 2 and cut 3, and whip/zoom get markers
+    assert kinds[:4] == ["asset-clip", "asset-clip", "transition", "asset-clip"], kinds
+    assert root.find(".//resources/effect[@name='Cross Dissolve']") is not None
+    markers = [m.get("value") for m in spine.iter("marker")]
+    assert any("whip-pan" in m for m in markers) and any("zoom transition" in m for m in markers)
+    for clip in spine.findall("asset-clip"):
+        tags = [c.tag for c in clip]
+        if "marker" in tags:
+            assert tags.index("marker") > max(tags.index(t) for t in ("adjust-transform",) if t in tags)
 
 
 def test_missing_setup_becomes_reshoot(media, tmp_path, monkeypatch):

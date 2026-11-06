@@ -51,6 +51,14 @@ def _transform(rc: RenderCut, cam: Cam, out_w: int, out_h: int) -> tuple[float, 
     return scale, dx / out_h * 100, dy / out_h * 100
 
 
+# Transitions with no standard FCPXML form: a marker tells the editor where to drop one.
+TRANSITION_TIPS = {
+    "whip": "Add a whip-pan transition here (DaVinci: Effects > Video Transitions, or a directional blur)",
+    "zoom": "Add a zoom transition here (DaVinci: Effects > Video Transitions > Smooth Cut / zoom)",
+    "match": "Match cut here: line up the movement across the cut",
+}
+
+
 def fcpxml(cuts: list[RenderCut], title: str, out_w: int, out_h: int, fps: float) -> str:
     fd = _frame_duration(fps)
     root = ET.Element("fcpxml", version="1.10")
@@ -69,6 +77,13 @@ def fcpxml(cuts: list[RenderCut], title: str, out_w: int, out_h: int, fps: float
         ET.SubElement(a, "media-rep", kind="original-media", src=MEDIA_ROOT + rc.src_name)
         assets[rc.src_name] = aid
 
+    # Final Cut's Cross Dissolve; DaVinci Resolve and Premiere map it to their own dissolve.
+    dissolve_ref = None
+    if any(rc.transition_in == "dissolve" for rc in cuts[1:]):
+        dissolve_ref = f"r{len(formats) + len(assets) + 10}"
+        ET.SubElement(res, "effect", id=dissolve_ref, name="Cross Dissolve",
+                      uid="FxPlug:4731E73A-8DAC-4113-9A30-AE85B1761265")
+
     lib = ET.SubElement(root, "library")
     event = ET.SubElement(lib, "event", name="ReelCraft")
     project = ET.SubElement(event, "project", name=title)
@@ -77,17 +92,18 @@ def fcpxml(cuts: list[RenderCut], title: str, out_w: int, out_h: int, fps: float
                         tcFormat="NDF", audioLayout="stereo", audioRate="48k")
     spine = ET.SubElement(seq, "spine")
     offset = 0.0
-    for rc in cuts:
+    for i, rc in enumerate(cuts):
+        if i > 0 and rc.transition_in == "dissolve" and dissolve_ref:
+            half = min(0.15, rc.out_len / 3, cuts[i - 1].out_len / 3)
+            t = ET.SubElement(spine, "transition", name="Cross Dissolve", offset=_t(offset - half, fd),
+                              duration=_t(2 * half, fd))
+            ET.SubElement(t, "filter-video", ref=dissolve_ref, name="Cross Dissolve")
         retimed = abs(rc.speed - 1) > 1e-3
         # With a timeMap, start/duration are in the clip's local (retimed) time.
         local_start = rc.src_in / rc.speed if retimed else rc.src_in
         clip = ET.SubElement(spine, "asset-clip", ref=assets[rc.src_name], name=f"Cut {rc.order_index + 1}",
                              offset=_t(offset, fd), start=_t(local_start, fd), duration=_t(rc.out_len, fd),
                              format=seq_fmt, tcFormat="NDF")
-        if rc.fixes or rc.flags:
-            ET.SubElement(clip, "marker", start=_t(local_start, fd), duration=_t(1 / fps, fd),
-                          value=("Fixes: " + ", ".join(rc.fixes) if rc.fixes else "No fixes") +
-                          (" | " + " ".join(rc.flags) if rc.flags else ""))
         if retimed:
             tm = ET.SubElement(clip, "timeMap")
             end_local = local_start + rc.out_len + 1
@@ -105,6 +121,15 @@ def fcpxml(cuts: list[RenderCut], title: str, out_w: int, out_h: int, fps: float
                 ka = ET.SubElement(p, "keyframeAnimation")
                 ET.SubElement(ka, "keyframe", time=t0, value=a)
                 ET.SubElement(ka, "keyframe", time=t1, value=b)
+        # Markers go last inside the clip (FCPXML element order).
+        notes = []
+        if i > 0 and rc.transition_in in TRANSITION_TIPS:
+            notes.append(TRANSITION_TIPS[rc.transition_in])
+        if rc.fixes:
+            notes.append("Fixes: " + ", ".join(rc.fixes))
+        notes += rc.flags
+        if notes:
+            ET.SubElement(clip, "marker", start=_t(local_start, fd), duration=_t(1 / fps, fd), value=" | ".join(notes))
         offset += rc.out_len
     ET.indent(root)
     return '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n' + ET.tostring(root, encoding="unicode")
