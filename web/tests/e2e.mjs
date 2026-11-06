@@ -67,9 +67,16 @@ function analyse(up) {
 }
 
 const ACTIONS = {
-  "start-analysis": ({ upload_id }) => {
+  "delete-upload": ({ upload_id }) => {
+    db.uploads = db.uploads.filter((u) => u.id !== upload_id);
+    return { ok: true };
+  },
+  "start-analysis": ({ upload_id, feedback }) => {
     const up = db.uploads.find((u) => u.id === upload_id);
     up.status = "processing";
+    up.last_feedback = feedback;
+    db.setups = db.setups.filter((x) => x.upload_id !== upload_id);
+    db.cuts = db.cuts.filter((x) => x.upload_id !== upload_id);
     later(2500, () => analyse(up));
     return { job_id: id(), status: "processing" };
   },
@@ -318,6 +325,30 @@ await step("stage 3: upload footage → suggestions → revise → export", asyn
   await page.getByRole("button", { name: "Export" }).click();
   await page.getByText("Download video").waitFor({ timeout: 15000 });
   await shot("14-exported");
+});
+
+await step("plans: no duplicates, re-analyse with a note, delete", async () => {
+  // Same link again: the app offers the existing plan instead of adding a copy.
+  page.once("dialog", (d) => d.dismiss());  // Cancel = open existing
+  await page.goto(`${APP}/breakdown`);
+  await page.getByRole("tab", { name: "Paste a link" }).click();
+  await page.getByLabel("Reel link").fill("https://www.instagram.com/reel/abc123/");
+  await page.getByRole("button", { name: "Analyse" }).click();
+  await page.getByText("Your Shoot Plan").waitFor();
+  if (db.uploads.length !== 1) throw new Error(`expected 1 upload, found ${db.uploads.length}`);
+  await page.getByText("Take 1").waitFor({ timeout: 15000 });
+  await page.getByRole("button", { name: "Not right? Re-analyse" }).click();
+  await page.getByPlaceholder(/Takes 1 and 4/).fill("Take 1 and take 3 are the same walk.");
+  await shot("16-reanalyse");
+  await page.getByRole("button", { name: "Re-analyse", exact: true }).click();
+  await page.getByText("Breaking down your reel…").waitFor();
+  if (db.uploads[0].last_feedback !== "Take 1 and take 3 are the same walk.") throw new Error("feedback not sent");
+  await page.getByText("Take 1").waitFor({ timeout: 15000 });
+  // Delete from the plan page.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Delete this reel and its plan" }).click();
+  await page.getByText("My shoots").waitFor();
+  if (db.uploads.length !== 0) throw new Error("upload not deleted");
 });
 
 await step("library", async () => {

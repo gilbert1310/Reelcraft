@@ -301,7 +301,7 @@ def _plan_groups(plan: vision.ShotPlan) -> list[list[int]]:
 
 
 def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
-                board: list[tuple[float, int, np.ndarray]]) -> vision.ShotPlan | None:
+                board: list[tuple[float, int, np.ndarray]], feedback: str | None = None) -> vision.ShotPlan | None:
     """Show the vision AI the whole reel as a storyboard and ask which takes were filmed.
     Returns None if the answer never covers every cut exactly once."""
     n = len(cuts)
@@ -313,6 +313,10 @@ def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
         parts.append(f"Cut {c.index + 1}: {c.start:.2f}s to {c.end:.2f}s ({c.length:.1f}s), camera: "
                      f"{describe_motion(c.stats or ShotStats())}, detected transition in: {c.transition_in}")
     parts.append("Fingerprint hint: " + " ".join("[" + ",".join(str(i + 1) for i in g) + "]" for g in hint))
+    if feedback and feedback.strip():
+        parts.append("The videographer reviewed an earlier plan for this reel and says: \"" + feedback.strip()[:1000] +
+                     "\". Take this seriously and correct the plan where the storyboard supports it; every cut must "
+                     "still be covered.")
     draft = None
     for attempt in range(2):
         plan = vision.ask(vision.content(parts), vision.ShotPlan, max_tokens=16000, effort="high")
@@ -406,7 +410,7 @@ def _setups_by_review(cuts: list[Cut], groups: list[list[int]]) -> list[dict]:
 
 # ---------- Pipeline ----------
 
-def analyze(path: str) -> dict:
+def analyze(path: str, feedback: str | None = None) -> dict:
     info = probe(path)
     if info.duration <= 0:
         raise RuntimeError("Video has no duration")
@@ -425,7 +429,7 @@ def analyze(path: str) -> dict:
         board = storyboard(reader, cuts, info.duration)
 
     hint = cluster(cuts, settings.group_threshold)
-    plan = plan_setups(cuts, hint, info.duration, board)
+    plan = plan_setups(cuts, hint, info.duration, board, feedback)
     if plan is not None:
         setups = _setups_from_plan(cuts, plan)
         summary = plan.summary

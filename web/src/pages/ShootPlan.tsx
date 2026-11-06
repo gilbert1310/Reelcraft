@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { action, must } from "../lib/api";
+import { action, deleteUpload, must } from "../lib/api";
 import { useLive, useLoad } from "../lib/hooks";
 import type { Setup, Upload } from "../lib/types";
 import { AngleBadge, Busy, ErrorBox, Page, Thumb } from "../components/ui";
@@ -11,6 +11,8 @@ export default function ShootPlan() {
   const nav = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [showRedo, setShowRedo] = useState(false);
+  const [feedback, setFeedback] = useState("");
   const { data, reload } = useLoad(async () => {
     const upload = must(await supabase.from("uploads").select("*").eq("id", uploadId!).single()) as Upload;
     const setups = upload.status === "done"
@@ -26,7 +28,9 @@ export default function ShootPlan() {
     setError(null);
     setRetrying(true);
     try {
-      await action("start-analysis", { upload_id: uploadId });
+      await action("start-analysis", { upload_id: uploadId, feedback: feedback.trim() || undefined });
+      setShowRedo(false);
+      setFeedback("");
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -97,9 +101,31 @@ export default function ShootPlan() {
           )}
           <ErrorBox>{error}</ErrorBox>
           <button className="btn primary big block" onClick={startShooting}>Start Shooting</button>
+          {!showRedo ? (
+            <button className="btn ghost block" onClick={() => setShowRedo(true)}>Not right? Re-analyse</button>
+          ) : (
+            <div className="card stack">
+              <strong>Re-analyse this reel</strong>
+              <label className="stack" style={{ gap: 6 }}>
+                <span className="small muted">What's off? (optional) The AI will take it into account.</span>
+                <textarea rows={3} maxLength={1000} value={feedback} onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="e.g. Takes 1 and 4 are the same walk. There's also a close-up of the bag." />
+              </label>
+              <div className="row">
+                <button className="btn ghost grow" onClick={() => setShowRedo(false)}>Cancel</button>
+                <button className="btn primary grow" onClick={retry} disabled={retrying}>{retrying ? "Starting…" : "Re-analyse"}</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {busy && <ErrorBox>{error}</ErrorBox>}
+      {!busy && (
+        <button className="btn ghost block small" style={{ marginTop: 24, color: "var(--bad)" }}
+          onClick={async () => { if (await deleteUpload(upload.id, upload.file_name)) nav("/shoots"); }}>
+          Delete this reel and its plan
+        </button>
+      )}
     </Page>
   );
 }

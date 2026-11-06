@@ -73,6 +73,7 @@ class AnalyzeRequest(Job):
     upload_id: str
     video_url: Optional[str] = None   # signed URL for an uploaded file
     source_url: Optional[str] = None  # Instagram / TikTok / Facebook / YouTube link
+    feedback: Optional[str] = Field(default=None, max_length=1000)  # notes on a previous plan
 
 
 @app.post("/analyze", dependencies=[Depends(auth)])
@@ -102,7 +103,7 @@ def analyze(req: AnalyzeRequest, bg: BackgroundTasks) -> dict:
         if info.duration > settings.max_video_seconds:
             raise UserFacingError(f"Reels longer than {settings.max_video_seconds // 60} minutes aren't supported.")
         try:
-            return breakdown.analyze(path)
+            return breakdown.analyze(path, feedback=req.feedback)
         except vision.VisionUnavailable as e:
             raise UserFacingError(f"The AI step couldn't run: {e}")
         except vision.VisionRefused:

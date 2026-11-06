@@ -145,8 +145,16 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<Row>> = {
     const up = await owned(db, "uploads", body.upload_id, userId);
     if (up.status === "processing") await failIfStale(db, up.id, "Already analysing this reel");
     const payload: Row = { upload_id: up.id };
+    const feedback = String(body.feedback ?? "").trim().slice(0, 1000);
+    if (feedback) payload.feedback = feedback;
     if (up.source_url) payload.source_url = up.source_url;
-    else payload.video_url = await signedUrl(db, "reels", up.storage_path, userId);
+    else {
+      try {
+        payload.video_url = await signedUrl(db, "reels", up.storage_path, userId);
+      } catch {
+        throw new HttpError(410, "The original video for this plan is no longer stored. Upload it again to re-analyse.");
+      }
+    }
     await db.from("uploads").update({ status: "processing", error: null }).eq("id", up.id);
     try {
       const job_id = await startJob(db, userId, "analysis", up.id, "/analyze", payload);
@@ -155,6 +163,29 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<Row>> = {
       await db.from("uploads").update({ status: "failed", error: "Couldn't start the analysis. Try again." }).eq("id", up.id);
       throw e;
     }
+  },
+
+  // Deletes a shoot plan with everything made from it: its shoots, takes, renders and files.
+  async "delete-upload"({ db, userId, body }) {
+    const up = await owned(db, "uploads", body.upload_id, userId);
+    const projects = must(await db.from("projects").select("id").eq("upload_id", up.id).eq("user_id", userId), "projects") as Row[];
+    const paths: Record<string, string[]> = { reels: [], captures: [], renders: [], thumbs: [] };
+    if (up.storage_path) paths.reels.push(up.storage_path);
+    for (const p of projects) {
+      const caps = must(await db.from("captures").select("storage_path").eq("project_id", p.id).eq("user_id", userId), "captures") as Row[];
+      paths.captures.push(...caps.map((c) => c.storage_path));
+      paths.renders.push(...(await listFolder(db, "renders", `${userId}/${p.id}`)));
+      paths.thumbs.push(...(await listFolder(db, "thumbs", `${userId}/${p.id}`)));
+    }
+    paths.thumbs.push(...(await listFolder(db, "thumbs", `${userId}/${up.id}`)));
+    for (const [bucket, list] of Object.entries(paths)) {
+      const mine = list.filter((x) => x.startsWith(`${userId}/`));
+      for (let i = 0; i < mine.length; i += 100) await db.storage.from(bucket).remove(mine.slice(i, i + 100));
+    }
+    await db.from("recipes").update({ source_upload_id: null }).eq("source_upload_id", up.id);
+    const { error } = await db.from("uploads").delete().eq("id", up.id).eq("user_id", userId);
+    if (error) throw new HttpError(500, `Couldn't delete: ${error.message}`);
+    return { ok: true };
   },
 
   // Stage 2: on set ------------------------------------------------------------
@@ -330,6 +361,11 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<Row>> = {
     return { job_id, status: "exporting" };
   },
 };
+
+async function listFolder(db: SupabaseClient, bucket: string, folder: string): Promise<string[]> {
+  const { data } = await db.storage.from(bucket).list(folder, { limit: 1000 });
+  return (data ?? []).filter((f) => f.id).map((f) => `${folder}/${f.name}`);
+}
 
 async function rawClips(db: SupabaseClient, rawProjectId: string, userId: string): Promise<Row[]> {
   const rows = must(await db.from("raw_clips").select("*").eq("raw_project_id", rawProjectId).eq("user_id", userId)

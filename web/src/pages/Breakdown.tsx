@@ -20,6 +20,23 @@ export default function Breakdown() {
     setError(null);
     setBusy(true);
     try {
+      // Same video or link uploaded before? Open it, or replace it, instead of piling up copies.
+      const label = tab === "upload" ? file?.name : linkLabel(link);
+      const col = tab === "upload" ? "file_name" : "source_url";
+      const val = tab === "upload" ? file?.name : link.trim();
+      if (val) {
+        const { data: existing } = await supabase.from("uploads").select("id,file_name").eq(col, val)
+          .order("created_at", { ascending: false });
+        if (existing && existing.length) {
+          const replace = window.confirm(`You already have a shoot plan for "${label}".\n\nOK: replace it with a ` +
+            "fresh analysis.\nCancel: open the existing plan.");
+          if (!replace) {
+            nav(`/plan/${existing[0].id}`);
+            return;
+          }
+          for (const e of existing) await action("delete-upload", { upload_id: e.id });
+        }
+      }
       let row: { id: string };
       if (tab === "upload") {
         if (!file) throw new Error("Choose a video first");

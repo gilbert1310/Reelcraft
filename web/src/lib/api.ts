@@ -105,3 +105,10 @@ export function linkLabel(value: string): string {
   } catch { /* fall through */ }
   return "Linked video";
 }
+
+/** Deletes a shoot plan and everything made from it, after asking. Returns true if deleted. */
+export async function deleteUpload(uploadId: string, name: string | null): Promise<boolean> {
+  if (!window.confirm(`Delete "${name || "this reel"}" and its shoot plan? This can't be undone.`)) return false;
+  await action("delete-upload", { upload_id: uploadId });
+  return true;
+}

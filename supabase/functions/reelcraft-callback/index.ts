@@ -107,10 +107,8 @@ const HANDLERS: Record<string, Handler> = {
       cut_count: result.cuts.length, setup_count: result.setups.length, plan_summary: result.plan_summary ?? null,
     }).eq("id", uploadId), "update upload");
 
-    // Store the recipe, not the footage: drop the reference video unless told to keep it.
-    if (up.storage_path && Deno.env.get("KEEP_REFERENCE_VIDEOS") !== "true") {
-      await db.storage.from("reels").remove([up.storage_path]);
-    }
+    // The reference video is kept so the plan can be re-analysed; it's removed when the user
+    // deletes the plan (action "delete-upload"). The style library stores patterns only.
   },
 
   async check(db, job, result, error) {
