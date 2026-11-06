@@ -179,3 +179,28 @@ def test_storyboard_covers_whole_reel_and_every_cut(media):
     assert {ci for _, ci, _ in board} == {c.index for c in cuts}      # every cut seen
     assert len(board) <= MAX_PLAN_IMAGES
     assert max(max(f.shape[:2]) for _, _, f in board) <= 384          # small frames only
+
+
+def test_audit_pass_can_add_a_missed_take(media, monkeypatch):
+    """The second pass sees the draft and may split it; its corrected plan is used."""
+    from app import breakdown, vision
+    res = _analysis(media)
+    cuts = [breakdown.Cut(c["order_index"], c["start_time"], c["end_time"]) for c in res["cuts"]]
+    calls = []
+
+    def fake_ask(parts, schema, **kw):
+        calls.append(parts)
+        audit = any(p.get("type") == "text" and p["text"].startswith("Draft plan to audit") for p in parts)
+        groups = [[1, 3, 5], [2, 4], [6]] if audit else [[1, 3, 5], [2, 4, 6]]
+        return vision.ShotPlan(shoot_notes="x", summary=f"{len(groups)} takes", setups=[
+            vision.PlannedSetup(setup_number=k + 1, cut_numbers=g, description="d", angle="front", subject="s",
+                                film_duration_seconds=8, beginner_tip="t", reason="r") for k, g in enumerate(groups)],
+            cuts=[])
+    monkeypatch.setattr(vision, "ask", fake_ask)
+    plan = breakdown.plan_setups(cuts, [[0, 2, 4], [1, 3, 5]], 6.8, [])
+    assert len(calls) == 2 and plan.summary == "3 takes"
+
+
+def test_planner_prompt_has_no_fixed_example_list():
+    from app import vision
+    assert "walks away" not in vision.SHOT_PLANNER and "do not assume any particular number" in vision.SHOT_PLANNER

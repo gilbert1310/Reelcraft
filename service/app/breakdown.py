@@ -307,17 +307,35 @@ def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
         parts.append(f"Cut {c.index + 1}: {c.start:.2f}s to {c.end:.2f}s ({c.length:.1f}s), camera: "
                      f"{describe_motion(c.stats or ShotStats())}, detected transition in: {c.transition_in}")
     parts.append("Fingerprint hint: " + " ".join("[" + ",".join(str(i + 1) for i in g) + "]" for g in hint))
+    draft = None
     for attempt in range(2):
         plan = vision.ask(vision.content(parts), vision.ShotPlan, max_tokens=16000, effort="high")
-        groups = [[k - 1 for k in s.cut_numbers] for s in plan.setups]
-        problem = _partition_problem(groups, n)
+        problem = _partition_problem([[k - 1 for k in s.cut_numbers] for s in plan.setups], n)
         if problem is None:
-            log.info("Shot plan: %s | %s", plan.summary, plan.shoot_notes[:400])
-            return plan
+            draft = plan
+            break
         log.warning("Shot plan attempt %d didn't cover every cut once: %s", attempt + 1, problem)
         parts.append(f"Your previous answer had {problem}. Answer again: every cut from 1 to {n} must "
                      "appear in exactly one take.")
-    return None
+    if draft is None:
+        return None
+    log.info("Draft shot plan: %s", draft.summary)
+
+    # Second pass: audit the draft cut by cut and add anything it missed.
+    audit_parts = parts + ["Draft plan to audit:\n" + draft.model_dump_json(indent=1), vision.PLAN_AUDIT]
+    try:
+        audited = vision.ask(vision.content(audit_parts), vision.ShotPlan, max_tokens=16000, effort="high")
+    except vision.VisionUnavailable:
+        raise
+    except Exception:
+        log.exception("Plan audit failed; using the draft")
+        return draft
+    problem = _partition_problem([[k - 1 for k in s.cut_numbers] for s in audited.setups], n)
+    if problem is not None:
+        log.warning("Audited plan didn't cover every cut once (%s); using the draft", problem)
+        return draft
+    log.info("Audited shot plan: %s | %s", audited.summary, audited.shoot_notes[:400])
+    return audited
 
 
 def _setup_row(cuts: list[Cut], members: list[int], n: int, description: str, angle: str, subject: str,
