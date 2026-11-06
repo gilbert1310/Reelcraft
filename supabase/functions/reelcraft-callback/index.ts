@@ -106,6 +106,7 @@ const HANDLERS: Record<string, Handler> = {
     await check(await db.from("uploads").update({
       status: "done", error: null, duration: v.duration, width: v.width, height: v.height, fps: v.fps,
       cut_count: result.cuts.length, setup_count: result.setups.length, plan_summary: result.plan_summary ?? null,
+      review: result.review ?? null,
     }).eq("id", uploadId), "update upload");
 
     // The reference video is kept so the plan can be re-analysed; it's removed when the user

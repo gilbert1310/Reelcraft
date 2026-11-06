@@ -88,6 +88,30 @@ class ShotPlan(BaseModel):
     cuts: list[CutDetail] = Field(description="One entry per cut, by cut number")
 
 
+class StructurePart(BaseModel):
+    start_s: float
+    end_s: float
+    part: str = Field(description="hook, setup, build, payoff, loop, call to action, ...")
+    what_happens: str
+
+
+class ProductionReview(BaseModel):
+    title: str = Field(description="A short name for this recipe")
+    concept: str = Field(description="What the reel is selling or saying, and the feeling it leaves")
+    hook: str = Field(description="What grabs attention in the first 1-2 seconds and why it works")
+    structure: list[StructurePart]
+    look: list[str] = Field(description="Colour grade, lighting, time of day, styling/wardrobe, location")
+    camera: list[str] = Field(description="Resolution, frame rate, lens feel, stabilisation, focus, settings")
+    edit: list[str] = Field(description="Pacing, each transition and where, speed effects, text/graphics, other "
+                            "effects (flashes, grain, vignette, zooms, overlays)")
+    music: list[str] = Field(description="Music style and energy, how the cuts follow it, sound design")
+    gear: list[str]
+    shoot_schedule: list[str] = Field(description="Ordered steps for the shoot day, grouped by location, naming takes")
+    time_estimate: str
+    difficulty: Literal["beginner", "intermediate", "advanced"]
+    producer_tips: list[str] = Field(description="What makes it work and how to make yours even better")
+
+
 class RecipeTags(BaseModel):
     genre: str
     moods: list[str]
@@ -211,6 +235,24 @@ PLAN_AUDIT = (
     "cut is still covered by the take it is in. Move any non-filmed cut (logo or end card, title) to "
     "graphics. Split a take only if its cuts truly need the camera in a different place. Return the "
     "complete corrected plan in the same format, with shoot_notes saying what you changed and why."
+)
+
+
+PRODUCER_REVIEW = (
+    "You are a top short-form content producer and creator. Write the production RECIPE for this reel: "
+    "everything a videographer needs to know to cook the same result. Look at it as a whole piece of "
+    "content, not as a list of cuts. Use the storyboard, the measured edit data and the take plan below.\n"
+    "Cover: the concept and the feeling it leaves; the hook in the first 1-2 seconds; the structure over "
+    "time (hook, build, payoff, loop and so on, with seconds); the look (colour grade, lighting, time of "
+    "day, styling and wardrobe, location); camera settings; the edit recipe (pacing, every transition and "
+    "where it is, speed effects, text and graphics, any other effects such as flashes, grain, vignettes, "
+    "punch-in zooms or overlays); music and rhythm (style and energy, how the cuts follow the beat; use "
+    "the measured tempo and beat-sync numbers); the gear to bring; a shoot-day plan that orders the takes "
+    "by location so nothing is set up twice, with a time estimate; the difficulty; and producer tips on "
+    "what makes it work and how to make a version even better.\n"
+    "Be concrete and practical, in plain words a beginner can act on. Only state what you can see or what "
+    "was measured; say 'likely' when you are inferring. Slow motion, transitions, grading and text are "
+    "done in the edit, not on set."
 )
 
 
@@ -373,6 +415,11 @@ def _mock(schema: type[T], parts: list[dict]) -> T:
                          beats=[PlannedBeat(text=f"Mock beat for cut {n}", cut_numbers=[n]) for n in g])
             for k, g in enumerate(groups)],
             cuts=[CutDetail(cut_number=n, action="moves", transition_in="cut", slow_motion=False) for n in cuts])
+    if schema is ProductionReview:
+        return ProductionReview(title="Mock recipe", concept="mock", hook="mock", structure=[
+            StructurePart(start_s=0, end_s=2, part="hook", what_happens="mock")], look=["mock"], camera=["4K 60fps"],
+            edit=["mock"], music=["mock"], gear=["phone"], shoot_schedule=["Take 1"], time_estimate="1 hour",
+            difficulty="beginner", producer_tips=["mock"])
     if schema is MergeVerdict:
         return MergeVerdict(groups=[[n] for n in _count(parts, "Setup ")], reason="mock")
     if schema is SetupBreakdown:

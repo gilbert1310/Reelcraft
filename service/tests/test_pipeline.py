@@ -255,3 +255,23 @@ def test_takes_carry_beats_linked_to_their_cuts(media):
         assert s["beats"], s
         for b in s["beats"]:
             assert b["text"] and set(b["cuts"]) <= members
+
+
+def test_rhythm_finds_tempo_and_cuts_on_beat(tmp_path):
+    import subprocess
+    from app import audio
+    wav = tmp_path / "clicks.mp4"
+    # 120 BPM click track (a short 1 kHz blip every 0.5 s) over a 12 s test video
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=160x284:rate=30:duration=12",
+                    "-f", "lavfi", "-i", "aevalsrc='if(lt(mod(t,0.5),0.03),sin(2*PI*1000*t),0)':s=44100:d=12",
+                    "-shortest", "-c:v", "libx264", "-c:a", "aac", str(wav)], check=True)
+    r = audio.rhythm(str(wav), [0, 2.0, 3.5, 5.0, 7.27, 9.0], 12)
+    assert r["has_audio"] and abs(r["bpm"] - 120) < 4, r
+    assert r["cuts_on_beat"] == 4 and r["cuts_total"] == 5, r      # 7.27 s is off the beat
+
+
+def test_recipe_review_is_in_the_result(media):
+    res = _analysis(media)
+    rv = res["review"]
+    assert rv and rv["hook"] and rv["shoot_schedule"] and rv["measured"]["cuts"] == 6
+    assert rv["measured"]["rhythm"].get("has_audio") is False   # the test reel is silent

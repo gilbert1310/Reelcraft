@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from . import vision
+from . import audio, vision
 from .config import settings
 from .embed import embed_images, embed_texts, embedder_name, normalize
 from .media import FrameReader, VideoInfo, probe, sample_times, to_jpeg
@@ -412,6 +412,48 @@ def _setups_by_review(cuts: list[Cut], groups: list[list[int]]) -> list[dict]:
     return setups
 
 
+def measure_edit(cuts: list[Cut], duration: float, rhythm: dict) -> dict:
+    """Hard numbers about the edit, for the recipe (and so the AI doesn't have to guess them)."""
+    lengths = [c.length for c in cuts]
+    transitions: dict[str, list[int]] = {}
+    for c in cuts[1:]:
+        transitions.setdefault(c.transition_in, []).append(c.index + 1)
+    return {
+        "duration_s": round(duration, 2),
+        "cuts": len(cuts),
+        "cuts_per_second": round(len(cuts) / max(duration, 1e-3), 2),
+        "average_cut_s": round(float(np.mean(lengths)), 2),
+        "shortest_cut_s": round(float(np.min(lengths)), 2),
+        "longest_cut_s": round(float(np.max(lengths)), 2),
+        "transitions": transitions,
+        "slow_motion_cuts": [c.index + 1 for c in cuts if c.speed < 1],
+        "rhythm": rhythm,
+    }
+
+
+def produce_review(cuts: list[Cut], setups: list[dict], board: list[tuple[float, int, np.ndarray]],
+                   measured: dict, summary: str) -> dict | None:
+    """The producer's recipe for the whole reel. Optional: the plan still works without it."""
+    import json
+    parts: list = [vision.PRODUCER_REVIEW, "Storyboard:"]
+    for t, ci, frame in board:
+        parts += [f"t={t:.1f}s, cut {ci + 1}", frame]
+    parts.append("Measured edit data: " + json.dumps(measured))
+    parts.append("Take plan: " + summary + "\n" + "\n".join(
+        f"Take {s['setup_number']}: {s['description']} Beats: " + "; ".join(b["text"] for b in s.get("beats", []))
+        for s in setups if not s.get("is_graphic")))
+    try:
+        review = vision.ask(vision.content(parts), vision.ProductionReview, max_tokens=12000)
+    except vision.VisionUnavailable:
+        raise
+    except Exception:
+        log.exception("Producer review failed; continuing without it")
+        return None
+    out = review.model_dump()
+    out["measured"] = measured
+    return out
+
+
 # ---------- Pipeline ----------
 
 def analyze(path: str, feedback: str | None = None) -> dict:
@@ -443,12 +485,22 @@ def analyze(path: str, feedback: str | None = None) -> dict:
         summary = f"Filmed as {len(setups)} takes."
     cuts[0].transition_in = "cut"
 
+    try:
+        rhythm = audio.rhythm(path, [c.start for c in cuts], info.duration)
+    except Exception:
+        log.exception("Rhythm analysis failed")
+        rhythm = {}
+    measured = measure_edit(cuts, info.duration, rhythm)
+    review = produce_review(cuts, setups, board, measured, summary)
+
     recipe = build_recipe(cuts, setups, info.duration, reel_frames)
+    recipe["rhythm"] = rhythm
     return {
         "video": {"duration": info.duration, "fps": info.fps, "width": info.display_size[0],
                   "height": info.display_size[1]},
         "embedder": embedder_name(),
         "plan_summary": summary,
+        "review": review,
         "setups": setups,
         "cuts": [{
             "order_index": c.index,

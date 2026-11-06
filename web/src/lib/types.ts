@@ -3,7 +3,18 @@ export type UploadStatus = "queued" | "processing" | "done" | "failed" | "link_f
 export interface Upload {
   id: string; user_id: string; file_name: string | null; storage_path: string | null; source_url: string | null;
   status: UploadStatus; error: string | null; duration: number | null; cut_count: number | null;
-  setup_count: number | null; plan_summary: string | null; created_at: string; updated_at: string;
+  setup_count: number | null; plan_summary: string | null; review: Review | null; created_at: string; updated_at: string;
+}
+
+export interface Review {
+  title: string; concept: string; hook: string;
+  structure: { start_s: number; end_s: number; part: string; what_happens: string }[];
+  look: string[]; camera: string[]; edit: string[]; music: string[]; gear: string[]; shoot_schedule: string[];
+  time_estimate: string; difficulty: string; producer_tips: string[];
+  measured: {
+    duration_s: number; cuts: number; cuts_per_second: number; average_cut_s: number;
+    rhythm?: { has_audio?: boolean; bpm?: number | null; cuts_on_beat?: number; cuts_total?: number; beat_sync_pct?: number | null };
+  };
 }
 
 export interface Setup {

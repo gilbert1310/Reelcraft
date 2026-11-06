@@ -65,7 +65,13 @@ function analyse(up) {
     db.cuts.push({ id: id(), upload_id: up.id, setup_id: s.id, setup_number: s.setup_number, order_index: k,
       start_time: k, end_time: k + 1, transition_in: "cut", speed: 1, action: "walking", thumbnail_path: `${UID}/${up.id}/cut_${k}.jpg` });
   }
-  Object.assign(up, { status: "done", cut_count: 6, setup_count: 3, duration: 6 });
+  Object.assign(up, { status: "done", cut_count: 6, setup_count: 3, duration: 6, review: {
+    title: "Golden-hour street strut", concept: "Confident, effortless city style.", hook: "Walks straight at the lens in hard sun.",
+    structure: [{ start_s: 0, end_s: 2, part: "hook", what_happens: "Walk towards camera" }],
+    look: ["Warm golden-hour grade"], camera: ["4K at 60fps"], edit: ["Cuts every 0.8s on the beat"], music: ["Upbeat afro-pop"],
+    gear: ["Phone", "Gimbal"], shoot_schedule: ["Sidewalk: take 1", "Building: takes 2 and 3"], time_estimate: "45 minutes",
+    difficulty: "beginner", producer_tips: ["Shoot an extra walk pass"],
+    measured: { duration_s: 6, cuts: 6, cuts_per_second: 1, average_cut_s: 1, rhythm: { has_audio: true, bpm: 118, beat_sync_pct: 83 } } } });
 }
 
 const ACTIONS = {
@@ -258,6 +264,8 @@ await step("stage 1: paste link → shoot plan", async () => {
   await page.getByText("Take 3", { exact: true }).waitFor({ timeout: 15000 });
   await page.getByText("This reel uses").waitFor();
   await page.getByText("Beat one of take 1").waitFor();
+  await page.getByText("Golden-hour street strut").waitFor();
+  await page.getByText("83% of cuts on the beat").waitFor();
   await page.waitForTimeout(400);
   await shot("04-shoot-plan");
   await page.getByRole("button", { name: "Play: Beat 1: Beat one of take 1" }).click();

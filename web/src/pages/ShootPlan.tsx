@@ -6,6 +6,7 @@ import { useLive, useLoad } from "../lib/hooks";
 import type { Beat, Cut, Setup, Upload } from "../lib/types";
 import { AngleBadge, Busy, ErrorBox, Page, Thumb } from "../components/ui";
 import { Snippet } from "../components/Snippet";
+import { Recipe } from "../components/Recipe";
 
 export default function ShootPlan() {
   const { uploadId } = useParams();
@@ -87,6 +88,8 @@ export default function ShootPlan() {
       )}
       {upload.status === "done" && (
         <div className="stack">
+          {upload.review && <Recipe review={upload.review} />}
+          <h2 style={{ marginBottom: 0 }}>The takes</h2>
           {upload.plan_summary && <div className="notice"><strong>{upload.plan_summary}</strong></div>}
           <p className="muted">This reel uses <strong style={{ color: "var(--text)" }}>{upload.cut_count} cuts</strong> from
             just <strong style={{ color: "var(--text)" }}>{setups.length} {setups.length === 1 ? "take" : "takes"}</strong>.
