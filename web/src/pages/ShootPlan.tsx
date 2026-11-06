@@ -22,7 +22,7 @@ export default function ShootPlan() {
       ? must(await supabase.from("setups").select("*").eq("upload_id", uploadId!).order("setup_number")) as Setup[]
       : [];
     const cuts = done
-      ? must(await supabase.from("cuts").select("id,order_index,start_time,end_time,thumbnail_path,speed,transition_in").eq("upload_id", uploadId!)
+      ? must(await supabase.from("cuts").select("id,order_index,start_time,end_time,thumbnail_path,speed,transition_in,effects").eq("upload_id", uploadId!)
           .order("order_index")) as Cut[]
       : [];
     return { upload, setups, cuts };
@@ -107,7 +107,7 @@ export default function ShootPlan() {
               </div>
             </article>
           ))}
-          <EditEffects cuts={data.cuts} graphics={graphics} />
+          <EditEffects cuts={data.cuts} graphics={graphics} look={upload.look} />
           <ErrorBox>{error}</ErrorBox>
           <button className="btn primary big block" onClick={startShooting}>Start Shooting</button>
           {!showRedo ? (
@@ -181,7 +181,8 @@ function Beats({ beats, cuts, videoPath, description }: {
 }
 
 /** What the edit adds afterwards, kept apart from what gets filmed. */
-function EditEffects({ cuts, graphics }: { cuts: Cut[]; graphics: Setup[] }) {
+function EditEffects({ cuts, graphics, look }: { cuts: Cut[]; graphics: Setup[]; look: string | null }) {
+  const nice = (t: string) => t.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
   const list = (ns: number[]) => ns.map((n) => n + 1).join(", ");
   const slow = cuts.filter((c) => Number(c.speed) < 0.99).map((c) => c.order_index);
   const byType = new Map<string, number[]>();
@@ -192,12 +193,16 @@ function EditEffects({ cuts, graphics }: { cuts: Cut[]; graphics: Setup[] }) {
   }
   const items: string[] = [];
   if (slow.length) items.push(`Slow motion on cut ${list(slow)}. Just film those takes as normal video at 60fps.`);
-  for (const [t, ns] of byType) items.push(`${t[0].toUpperCase()}${t.slice(1)} transition into cut ${list(ns)}.`);
+  for (const [t, ns] of byType) items.push(`${nice(t)} transition into cut ${list(ns)}.`);
+  const byEffect = new Map<string, number[]>();
+  for (const c of cuts) for (const e of c.effects ?? []) byEffect.set(e, [...(byEffect.get(e) ?? []), c.order_index]);
+  for (const [e, ns] of byEffect) items.push(`${nice(e)} effect on cut ${list(ns)}.`);
+  if (look && look !== "none") items.push(`${nice(look)} colour look over the whole reel.`);
   for (const g of graphics) items.push(g.description || "A graphic added in the edit.");
   if (!items.length) return null;
   return (
     <div className="notice stack" style={{ gap: 6 }}>
-      <strong>Done in the edit (don't film these)</strong>
+      <strong>Done in the edit (ReelCraft adds these automatically)</strong>
       <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{items.map((t, i) => <li key={i}>{t}</li>)}</ul>
     </div>
   );

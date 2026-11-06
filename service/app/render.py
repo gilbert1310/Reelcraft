@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 
 from .correct import Cam, RenderCut
+from . import effects as fx
 from .media import FrameReader, MediaError, ffmpeg, has_filter
 
 log = logging.getLogger(__name__)
@@ -155,39 +156,44 @@ class _Encoder:
 
 
 def render(cuts: list[RenderCut], out_path: str, out_w: int, out_h: int, fps: float,
-           tmp: Path, music_path: str | None = None) -> dict:
-    """Render the plan. Returns {"frames", "duration"}."""
+           tmp: Path, music_path: str | None = None, look: str | None = None) -> dict:
+    """Render the plan with its transitions, effects and look. Returns {"frames", "duration"}."""
     out_w, out_h = out_w - out_w % 2, out_h - out_h % 2
     enc = _Encoder(out_path, out_w, out_h, fps, music_path)
+    hold = max(fx.OUTRO.values()) + 1         # frames held back so the next cut can treat them
     queue: deque[np.ndarray] = deque()
-    tail: list[np.ndarray] = []  # frames past the previous cut's end, for dissolves
+    tail: list[np.ndarray] = []  # frames past the previous cut's end, for overlap transitions
     try:
         for i, rc in enumerate(cuts):
             nxt = cuts[i + 1] if i + 1 < len(cuts) else None
             n = max(1, int(round(rc.out_len * fps)))
-            d_next = int(round(DISSOLVE_S * fps)) if nxt and nxt.transition_in == "dissolve" else 0
+            d_next = int(round(DISSOLVE_S * fps)) if nxt and nxt.transition_in in fx.OVERLAP else 0
             d_next = min(d_next, n // 2, int(round(nxt.out_len * fps)) // 2) if nxt else 0
             path, offset = _prepass(rc, tmp, fps, extra=d_next / fps * rc.speed)
             src = _Source(rc, path, offset)
+
+            def frame(k: int, extra: float = 1.0) -> np.ndarray:
+                f = src.frame(k, fps, out_w, out_h, extra)
+                return fx.apply_look(fx.apply_effects(f, rc.effects, k), look)
+
             try:
-                if rc.transition_in == "whip" and queue:
-                    for j, qf in enumerate(list(queue)[-WHIP_FRAMES:]):
-                        idx = len(queue) - min(WHIP_FRAMES, len(queue)) + j
-                        queue[idx] = _whip_blur(qf, (j + 1) / WHIP_FRAMES, -1)
+                kind = rc.transition_in if i > 0 else "cut"
+                m = fx.OUTRO.get(kind, 0)
+                if m and queue:
+                    start = max(0, len(queue) - m)
+                    for j, qi in enumerate(range(start, len(queue))):
+                        queue[qi] = fx.outro(kind, queue[qi], j, len(queue) - start)
                 for k in range(n):
-                    extra = 1.0
-                    if rc.transition_in == "zoom" and k < ZOOM_FRAMES:
-                        extra = 1.0 + 0.25 * (1 - k / ZOOM_FRAMES)
-                    f = src.frame(k, fps, out_w, out_h, extra)
-                    if rc.transition_in == "whip" and k < WHIP_FRAMES:
-                        f = _whip_blur(f, 1 - k / WHIP_FRAMES, -1)
-                    if rc.transition_in == "dissolve" and k < len(tail):
-                        a = (k + 1) / (len(tail) + 1)
-                        f = cv2.addWeighted(tail[k], 1 - a, f, a, 0)
+                    extra = 1.0 + 0.25 * (1 - k / fx.INTRO["zoom"]) if kind == "zoom" and k < fx.INTRO["zoom"] else 1.0
+                    f = frame(k, extra)
+                    if kind in fx.OVERLAP and k < len(tail):
+                        f = fx.blend_in(kind, tail[k], f, (k + 1) / (len(tail) + 1))
+                    elif kind != "zoom":
+                        f = fx.intro(kind, f, k)
                     queue.append(f)
-                    while len(queue) > WHIP_FRAMES + 1:
+                    while len(queue) > hold:
                         enc.write(queue.popleft())
-                tail = [src.frame(n + k, fps, out_w, out_h) for k in range(d_next)]
+                tail = [frame(n + k) for k in range(d_next)]
             finally:
                 src.close()
                 if path != rc.src_path and os.path.exists(path):

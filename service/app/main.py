@@ -162,6 +162,7 @@ class AssembleRequest(Job):
     captures: list[dict[str, Any]] = Field(description="[{id, url, file_name, setup_number}]")
     cuts: list[dict[str, Any]]
     graphic_setups: list[int] = []
+    look: Optional[str] = None
     outputs: Outputs
     fps: float = 30
     width: int = settings.out_width

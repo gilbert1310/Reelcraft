@@ -81,6 +81,7 @@ const HANDLERS: Record<string, Handler> = {
       upload_id: uploadId, user_id: userId, setup_id: setupId.get(c.setup_number), setup_number: c.setup_number,
       order_index: c.order_index, start_time: c.start_time, end_time: c.end_time, transition_in: c.transition_in,
       speed: c.speed, action: c.action, stats: c.stats, embedding: toVector(c.embedding),
+      effects: Array.isArray(c.effects) ? c.effects : [],
       thumbnail_path: await putThumb(db, `${userId}/${uploadId}/cut_${c.order_index}.jpg`, c.thumbnail_b64),
     })));
     await check(await db.from("cuts").insert(cutRows), "insert cuts");
@@ -106,7 +107,7 @@ const HANDLERS: Record<string, Handler> = {
     await check(await db.from("uploads").update({
       status: "done", error: null, duration: v.duration, width: v.width, height: v.height, fps: v.fps,
       cut_count: result.cuts.length, setup_count: result.setups.length, plan_summary: result.plan_summary ?? null,
-      review: result.review ?? null,
+      review: result.review ?? null, look: result.look ?? null,
     }).eq("id", uploadId), "update upload");
 
     // The reference video is kept so the plan can be re-analysed; it's removed when the user

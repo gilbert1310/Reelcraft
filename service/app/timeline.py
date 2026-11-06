@@ -56,6 +56,11 @@ TRANSITION_TIPS = {
     "whip": "Add a whip-pan transition here (DaVinci: Effects > Video Transitions, or a directional blur)",
     "zoom": "Add a zoom transition here (DaVinci: Effects > Video Transitions > Smooth Cut / zoom)",
     "match": "Match cut here: line up the movement across the cut",
+    "flash": "Add a white flash transition here",
+    "slide_left": "Add a slide-left transition here", "slide_right": "Add a slide-right transition here",
+    "slide_up": "Add a slide-up transition here", "slide_down": "Add a slide-down transition here",
+    "blur": "Add a blur dissolve here", "fade_black": "Add a dip-to-black transition here",
+    "glitch": "Add a glitch transition here",
 }
 
 

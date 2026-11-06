@@ -3,7 +3,7 @@ export type UploadStatus = "queued" | "processing" | "done" | "failed" | "link_f
 export interface Upload {
   id: string; user_id: string; file_name: string | null; storage_path: string | null; source_url: string | null;
   status: UploadStatus; error: string | null; duration: number | null; cut_count: number | null;
-  setup_count: number | null; plan_summary: string | null; review: Review | null; created_at: string; updated_at: string;
+  setup_count: number | null; plan_summary: string | null; review: Review | null; look: string | null; created_at: string; updated_at: string;
 }
 
 export interface Review {
@@ -27,7 +27,7 @@ export interface Beat { text: string; cuts: number[] }
 
 export interface Cut {
   id: string; setup_id: string; setup_number: number; order_index: number; start_time: number; end_time: number;
-  transition_in: string; speed: number; action: string | null; thumbnail_path: string | null;
+  transition_in: string; speed: number; action: string | null; thumbnail_path: string | null; effects?: string[] | null;
 }
 
 export type ProjectStatus = "shooting" | "assembling" | "done" | "failed";

@@ -126,6 +126,7 @@ async function cutPayload(db: SupabaseClient, c: Row, withThumb = false): Promis
     id: c.id, order_index: c.order_index, setup_number: c.setup_number,
     start_time: Number(c.start_time), end_time: Number(c.end_time), speed: Number(c.speed),
     transition_in: c.transition_in, action: c.action, stats: c.stats, embedding: parseVector(c.embedding),
+    effects: c.effects ?? [],
     thumbnail_url: withThumb && c.thumbnail_path ? await signedUrl(db, "thumbs", c.thumbnail_path) : null,
   };
 }
@@ -264,7 +265,7 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<Row>> = {
   async assemble({ db, userId, body }) {
     const project = await owned(db, "projects", body.project_id, userId);
     const { setups, cuts } = await setupsAndCuts(db, project.upload_id);
-    const up = must(await db.from("uploads").select("fps,width,height").eq("id", project.upload_id).single(), "upload") as Row;
+    const up = must(await db.from("uploads").select("fps,width,height,look").eq("id", project.upload_id).single(), "upload") as Row;
     const caps = must(await db.from("captures").select("*").eq("project_id", project.id).eq("user_id", userId), "captures") as Row[];
     const usable = caps.filter((c) => c.setup_id && (c.check_status === "pass" || (body.force && c.check_status !== "failed")));
     const setupNumber = new Map(setups.map((s) => [s.id, s.setup_number]));
@@ -281,6 +282,7 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<Row>> = {
       title: project.title ?? "ReelCraft edit",
       fps: Number(up.fps) || 30,
       graphic_setups: setups.filter((s) => s.is_graphic).map((s) => s.setup_number),
+      look: up.look ?? null,
       captures: await Promise.all(usable.map(async (c) => ({
         id: c.id, url: await signedUrl(db, "captures", c.storage_path, userId),
         file_name: c.file_name ?? c.storage_path.split("/").pop(), setup_number: setupNumber.get(c.setup_id),

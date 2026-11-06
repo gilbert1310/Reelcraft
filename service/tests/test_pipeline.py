@@ -275,3 +275,27 @@ def test_recipe_review_is_in_the_result(media):
     rv = res["review"]
     assert rv and rv["hook"] and rv["shoot_schedule"] and rv["measured"]["cuts"] == 6
     assert rv["measured"]["rhythm"].get("has_audio") is False   # the test reel is silent
+
+
+def test_every_transition_effect_and_look_renders(media, tmp_path):
+    import os
+    from app import effects as fx
+    from app.correct import RenderCut
+    from app.media import probe
+    from app.render import render
+    srcs = [str(media["user_a"]), str(media["user_b"])]
+    cuts = []
+    for i, t in enumerate(fx.TRANSITIONS):
+        cuts.append(RenderCut(order_index=i, src_path=srcs[i % 2], src_name="x.mp4", src_w=540, src_h=960, src_fps=30,
+                              src_in=0.4 * (i % 5), speed=1.0, out_len=0.6, transition_in=t,
+                              effects=[fx.EFFECTS[i % len(fx.EFFECTS)]]))
+    out = tmp_path / "fx.mp4"
+    for look in fx.LOOKS:
+        stats = render(cuts if look == "warm" else cuts[:2], str(out), 180, 320, 30, tmp_path, look=look)
+    stats = render(cuts, str(out), 180, 320, 30, tmp_path, look="teal_orange")
+    expected = sum(round(c.out_len * 30) for c in cuts)
+    assert stats["frames"] == expected and abs(probe(out).duration - expected / 30) < 0.1
+    sheet = os.environ.get("FX_SHEET")
+    if sheet:
+        import shutil
+        shutil.copy(out, sheet)

@@ -29,6 +29,7 @@ class RenderCut:
     speed: float
     out_len: float
     transition_in: str = "cut"
+    effects: list[str] = field(default_factory=list)
     cam_start: Cam = field(default_factory=Cam)
     cam_end: Cam = field(default_factory=Cam)
     shake_amp: float = 0.0           # fraction of output width
@@ -140,7 +141,9 @@ def plan_cut(rc: RenderCut, ref: ShotStats, user: ShotStats, out_w: int, out_h: 
         start.cy, end.cy = start.cy - sy / 2, end.cy + sy / 2
         rc.fixes.append("Virtual pan" if abs(dpx) >= abs(dpy) else "Virtual tilt")
 
-    # 3. Shake
+    # 3. Shake ("shake" tagged as an edit effect counts as a handheld reference)
+    if "shake" in rc.effects and ref.shake < 0.008:
+        ref = ShotStats(**{**ref.to_dict(), "shake": 0.008})
     if user.shake > max(ref.shake * 1.5, 0.006):
         rc.stabilize = True
         rc.fixes.append("Stabilized")

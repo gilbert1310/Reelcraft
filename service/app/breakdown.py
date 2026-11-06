@@ -32,6 +32,7 @@ class Cut:
     transition_in: str = "cut"
     speed: float = 1.0
     action: str = ""
+    effects: list[str] = field(default_factory=list)
 
     @property
     def length(self) -> float:
@@ -372,9 +373,10 @@ def _apply_cut_details(cuts: list[Cut], details: list[vision.CutDetail]) -> None
         i = cd.cut_number - 1
         if 0 <= i < len(cuts):
             cuts[i].action = cd.action
-            if i > 0 and cd.transition_in in ("match", "dissolve", "whip", "zoom", "cut"):
+            if i > 0:
                 cuts[i].transition_in = cd.transition_in
             cuts[i].speed = 0.5 if cd.slow_motion else 1.0
+            cuts[i].effects = list(dict.fromkeys(cd.effects))
 
 
 def _setups_from_plan(cuts: list[Cut], plan: vision.ShotPlan) -> list[dict]:
@@ -427,6 +429,7 @@ def measure_edit(cuts: list[Cut], duration: float, rhythm: dict) -> dict:
         "longest_cut_s": round(float(np.max(lengths)), 2),
         "transitions": transitions,
         "slow_motion_cuts": [c.index + 1 for c in cuts if c.speed < 1],
+        "effects": {e: [c.index + 1 for c in cuts if e in c.effects] for e in sorted({e for c in cuts for e in c.effects})},
         "rhythm": rhythm,
     }
 
@@ -476,9 +479,11 @@ def analyze(path: str, feedback: str | None = None) -> dict:
 
     hint = cluster(cuts, settings.group_threshold)
     plan = plan_setups(cuts, hint, info.duration, board, feedback)
+    look = "none"
     if plan is not None:
         setups = _setups_from_plan(cuts, plan)
         summary = plan.summary
+        look = plan.look
     else:
         log.warning("Falling back to per-group review")
         setups = _setups_by_review(cuts, verify_groups(cuts, hint))
@@ -500,6 +505,7 @@ def analyze(path: str, feedback: str | None = None) -> dict:
                   "height": info.display_size[1]},
         "embedder": embedder_name(),
         "plan_summary": summary,
+        "look": look,
         "review": review,
         "setups": setups,
         "cuts": [{
@@ -510,6 +516,7 @@ def analyze(path: str, feedback: str | None = None) -> dict:
             "transition_in": c.transition_in,
             "speed": c.speed,
             "action": c.action,
+            "effects": c.effects,
             "embedding": _vec(c.embedding),
             "stats": c.stats.to_dict() if c.stats else None,
             "thumbnail_b64": _thumb(c.mid),

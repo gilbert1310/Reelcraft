@@ -20,7 +20,10 @@ log = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 Angle = Literal["behind", "front", "side", "overhead", "low", "pov", "other"]
-Transition = Literal["cut", "whip", "dissolve", "zoom", "match"]
+Transition = Literal["cut", "dissolve", "whip", "zoom", "match", "flash", "slide_left", "slide_right", "slide_up",
+                     "slide_down", "blur", "fade_black", "glitch"]
+Effect = Literal["grain", "vignette", "rgb_split", "shake", "black_white", "letterbox"]
+Look = Literal["none", "warm", "teal_orange", "black_white", "faded_film", "high_contrast", "cool"]
 
 
 # ---------- Output schemas ----------
@@ -36,6 +39,7 @@ class CutDetail(BaseModel):
     action: str = Field(description="What visibly happens in this cut, in a few words")
     transition_in: Transition
     slow_motion: bool
+    effects: list[Effect] = Field(default_factory=list, description="Edit effects visible on this cut")
 
 
 class CutDetails(BaseModel):
@@ -83,6 +87,7 @@ class ShotPlan(BaseModel):
                              "placement, and everything the subject did there, in story order")
     summary: str = Field(description="One or two plain sentences: how many takes and what they are")
     setups: list[PlannedSetup]
+    look: Look = Field(default="none", description="The closest colour look of the whole reel")
     graphics: list[int] = Field(default_factory=list, description="Cut numbers that are not filmed footage: "
                                 "logo or end cards, title or text cards, blank frames added in the edit")
     cuts: list[CutDetail] = Field(description="One entry per cut, by cut number")
@@ -224,7 +229,10 @@ SHOT_PLANNER = (
     "so every beat is covered with margin; one practical beginner tip; and a one-line reason these cuts "
     "come from one take. Number takes in the order they first appear. For each cut give a few-word action, "
     "the transition into it (keep the detected one unless the frames clearly show otherwise; 'match' for "
-    "a match cut) and whether it plays in slow motion. Finish with a plain summary such as 'Filmed as 5 "
+    "a match cut; also flash, slide_left/right/up/down, blur, fade_black or glitch when you see them), "
+    "whether it plays in slow motion, and any edit effects on it (grain, vignette, rgb_split, shake, "
+    "black_white, letterbox). Give the closest overall colour look (warm, teal_orange, black_white, "
+    "faded_film, high_contrast, cool, or none). Finish with a plain summary such as 'Filmed as 5 "
     "takes: …', naming each take."
 )
 

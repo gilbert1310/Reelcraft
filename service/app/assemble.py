@@ -116,6 +116,7 @@ def build_cut_plan(ref_cuts: list[dict], clips: list[Clip], out_w: int, out_h: i
             rc = RenderCut(order_index=c["order_index"], src_path=cl.path, src_name=cl.name,
                            src_w=w, src_h=h, src_fps=cl.info.fps, src_in=start, speed=speed,
                            out_len=out_len, transition_in=c.get("transition_in") or "cut",
+                           effects=[e for e in (c.get("effects") or []) if isinstance(e, str)],
                            cut_id=c.get("id"), setup_number=int(c["setup_number"]))
             if c["order_index"] in graphic_cuts:
                 rc.fixes, rc.score = ["Graphic: add your logo or end card in the editor"], 100
@@ -153,7 +154,7 @@ def finish(plan: list[RenderCut], payload: dict, tmp: Path, out_w: int, out_h: i
     result: dict = {}
     if out.get("preview_upload_url") or payload.get("render_preview", True):
         preview = tmp / "preview.mp4"
-        stats = render(plan, str(preview), pw, ph, fps, tmp, music)
+        stats = render(plan, str(preview), pw, ph, fps, tmp, music, look=payload.get("look"))
         result["preview"] = stats
         if out.get("preview_upload_url"):
             upload(out["preview_upload_url"], preview, "video/mp4")
