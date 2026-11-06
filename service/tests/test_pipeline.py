@@ -163,4 +163,19 @@ def test_partition_problem_reports_gaps():
     from app.breakdown import _partition_problem
     assert _partition_problem([[0, 1], [2]], 3) is None
     assert "missing cuts 3" in _partition_problem([[0, 1]], 3)
-    assert "more than one" in _partition_problem([[0, 1], [1, 2]], 3)
+    assert "more than one take" in _partition_problem([[0, 1], [1, 2]], 3)
+
+
+def test_storyboard_covers_whole_reel_and_every_cut(media):
+    from app.breakdown import Cut, MAX_PLAN_IMAGES, storyboard
+    from app.media import FrameReader, probe
+    info = probe(media["reel"])
+    res = _analysis(media)
+    cuts = [Cut(c["order_index"], c["start_time"], c["end_time"]) for c in res["cuts"]]
+    with FrameReader(str(media["reel"])) as r:
+        board = storyboard(r, cuts, info.duration)
+    times = [t for t, _, _ in board]
+    assert times == sorted(times) and times[0] < 0.5 and times[-1] > info.duration - 0.6
+    assert {ci for _, ci, _ in board} == {c.index for c in cuts}      # every cut seen
+    assert len(board) <= MAX_PLAN_IMAGES
+    assert max(max(f.shape[:2]) for _, _, f in board) <= 384          # small frames only

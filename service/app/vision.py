@@ -72,6 +72,8 @@ class PlannedSetup(BaseModel):
 
 
 class ShotPlan(BaseModel):
+    shoot_notes: str = Field(description="First, what physically happened on set: each camera position "
+                             "relative to the subject and what the subject did there, in story order")
     summary: str = Field(description="One or two plain sentences: how many takes and what they are")
     setups: list[PlannedSetup]
     cuts: list[CutDetail] = Field(description="One entry per cut, by cut number")
@@ -149,30 +151,37 @@ CINEMATOGRAPHER = (
 
 
 SHOT_PLANNER = (
-    "You are a senior cinematographer and editor. Below is every cut of one short-form reel, in edit "
-    "order, with timing and measured camera motion. Work out the SMALLEST set of camera takes (setups) "
-    "that one videographer with one camera would need to film to recreate this reel.\n\n"
-    "Editors cut one continuous take into many pieces and interleave takes, so many cuts usually come "
-    "from just a few takes. Put cuts in the SAME setup whenever they could come from one continuous take "
-    "from the same camera position on the same subject and action, even if:\n"
-    "- the framing is tighter or wider (editors punch in and crop; filming in 4K covers this),\n"
-    "- the speed differs (slow motion and speed ramps come from the same take filmed at 60fps),\n"
-    "- they are far apart in the edit, or the action has moved on (the take kept rolling),\n"
-    "- colour or brightness differs slightly (grading).\n"
-    "Start a NEW setup only when the camera has to be physically somewhere else (in front vs behind vs "
-    "side vs overhead), the subject or location changes, or the camera move could not come from the same "
-    "take (for example a drone shot vs handheld).\n"
+    "You are a senior cinematographer planning a reshoot. Below is a storyboard of one short-form reel: "
+    "frames sampled every half-second from start to end, each stamped with its time and the edit cut it "
+    "belongs to, followed by the list of cuts with timing and measured camera motion.\n\n"
+    "Work out the TAKES the videographer filmed: the separate times they pressed record. Do not think in "
+    "cuts. Editors slice a few takes into many cuts and interleave them, so a 16-cut reel is often only 3 "
+    "to 5 takes. A take is defined by two things: where the camera is relative to the subject, and the one "
+    "continuous thing the subject does while it rolls. For example, a typical walking reel might be:\n"
+    "1. camera in front, the person walks towards it;\n"
+    "2. camera behind, the person walks away;\n"
+    "3. the person walks, then turns around to look at the camera;\n"
+    "4. a close-up of a hand moving across the frame and a head turn.\n\n"
+    "Step 1: watch the storyboard as a story and write shoot_notes: each camera position, and what the "
+    "subject does there from start to finish.\n"
+    "Step 2: turn those into takes. Cuts belong to the same take when they show the same camera position "
+    "and the same continuous performance, even if they are far apart in the edit, tighter or wider "
+    "(editors punch in; filming in 4K covers this), faster or in slow motion (filmed at 60fps), or later in "
+    "the same movement. Start a new take when the camera is somewhere else, or when the subject starts a "
+    "different performance (walking away is one take; walking and turning back to camera is another). Use "
+    "the fewest takes that honestly recreate every cut.\n"
     "Ignore app interface overlays (usernames, buttons, captions, progress bars): the video may be a "
-    "screen recording.\n\n"
-    "For each setup give: the cut numbers it covers (every cut exactly once across all setups), one "
-    "filming direction for the whole take (framing and lens feel, camera position relative to the "
-    "subject, camera movement and speed, the subject's action from start to end of the take, lighting "
-    "and mood, focus, slow motion), how many seconds to film so every one of its cuts is covered in "
-    "order with margin, one practical beginner tip, and a one-line reason these cuts are one take. "
-    "Number setups in the order they first appear. For each cut give a few-word action, the transition "
-    "into it (keep the detected one unless the frames clearly show otherwise; 'match' for a match cut) "
-    "and whether it plays in slow motion. Finish with a plain summary like 'Filmed as 3 takes: a walk "
-    "from behind, a front close-up and a side tracking shot.'"
+    "screen recording. The fingerprint hint is a rough colour-similarity grouping that usually over-splits; "
+    "use it only as a clue.\n\n"
+    "For each take give: the cut numbers it covers (every cut exactly once across all takes), one filming "
+    "direction for the whole take (camera position and height, framing and lens feel, movement and speed, "
+    "the subject's action from start to end, lighting and mood, focus, slow motion), how many seconds to "
+    "film so every one of its cuts is covered in order with margin, one practical beginner tip, and a "
+    "one-line reason these cuts are one take. Number takes in the order they first appear. For each cut "
+    "give a few-word action, the transition into it (keep the detected one unless the frames clearly show "
+    "otherwise; 'match' for a match cut) and whether it plays in slow motion. Finish with a plain summary "
+    "like 'Filmed as 4 takes: walking towards the camera, walking away, a turn back to camera, and a "
+    "close-up of the hand and head.'"
 )
 
 
@@ -304,7 +313,7 @@ def _mock(schema: type[T], parts: list[dict]) -> T:
         cuts = _count(parts, "Cut ")
         if not groups:
             groups = [cuts]
-        return ShotPlan(summary=f"Filmed as {len(groups)} takes (mock).", setups=[
+        return ShotPlan(shoot_notes="mock", summary=f"Filmed as {len(groups)} takes (mock).", setups=[
             PlannedSetup(setup_number=k + 1, cut_numbers=g, description="Mock take.", angle="front",
                          subject="subject", film_duration_seconds=10, beginner_tip="Mock tip.", reason="mock")
             for k, g in enumerate(groups)],

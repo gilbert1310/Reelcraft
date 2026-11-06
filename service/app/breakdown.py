@@ -255,15 +255,26 @@ def _thumb(img: np.ndarray) -> str:
 
 # ---------- 3. Plan the takes (whole reel at once) ----------
 
-MAX_PLAN_IMAGES = 96
+MAX_PLAN_IMAGES = 90
+STORYBOARD_STEP = 0.5   # seconds between storyboard frames
+STORYBOARD_PX = 384
 
 
-def _plan_frames(c: Cut, per_cut: int) -> list[np.ndarray]:
-    if per_cut >= 3:
-        return [c.frames[0], c.mid, c.frames[-1]]
-    if per_cut == 2:
-        return [c.frames[0], c.frames[-1]]
-    return [c.mid]
+def storyboard(reader: FrameReader, cuts: list[Cut], duration: float) -> list[tuple[float, int, np.ndarray]]:
+    """Frames across the whole reel, every STORYBOARD_STEP seconds, labelled with their cut, so the AI
+    can follow the action as a story rather than only seeing cut edges. Every cut gets at least one."""
+    n = int(min(MAX_PLAN_IMAGES - len(cuts), max(12, round(duration / STORYBOARD_STEP))))
+    times = list(np.linspace(0.05, max(0.05, duration - 0.05), max(n, 1)))
+    def cut_of(t: float) -> int:
+        return next((c.index for c in cuts if c.start <= t < c.end), cuts[-1].index)
+    covered = {cut_of(t) for t in times}
+    times += [(c.start + c.end) / 2 for c in cuts if c.index not in covered]
+    board = []
+    for t in sorted(times):
+        f = reader.small_at(t, STORYBOARD_PX)
+        if f is not None:
+            board.append((float(t), cut_of(t), f))
+    return board
 
 
 def _partition_problem(groups: list[list[int]], n: int) -> str | None:
@@ -277,36 +288,35 @@ def _partition_problem(groups: list[list[int]], n: int) -> str | None:
     if missing:
         bits.append("missing cuts " + ", ".join(str(i + 1) for i in missing))
     if dupes:
-        bits.append("cuts in more than one setup: " + ", ".join(str(i + 1) for i in dupes))
+        bits.append("cuts in more than one take: " + ", ".join(str(i + 1) for i in dupes))
     if extra:
         bits.append("cut numbers that don't exist: " + ", ".join(str(i + 1) for i in extra))
-    return "; ".join(bits) or "an empty setup"
+    return "; ".join(bits) or "an empty take"
 
 
-def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float) -> vision.ShotPlan | None:
-    """Show the vision AI every cut at once and ask for the fewest takes that recreate the reel.
-    Returns None if the reel is too long for one request or the answer never covers every cut."""
+def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
+                board: list[tuple[float, int, np.ndarray]]) -> vision.ShotPlan | None:
+    """Show the vision AI the whole reel as a storyboard and ask which takes were filmed.
+    Returns None if the answer never covers every cut exactly once."""
     n = len(cuts)
-    per_cut = 3 if n * 3 <= MAX_PLAN_IMAGES and n <= 20 else 2 if n * 2 <= MAX_PLAN_IMAGES else 1
-    if n > MAX_PLAN_IMAGES:
-        return None
-    parts: list = [vision.SHOT_PLANNER,
-                   f"The reel is {duration:.1f}s long with {n} cuts.",
-                   "Fingerprint hint (automatic visual similarity; it often splits one take into several): " +
-                   " ".join("[" + ",".join(str(i + 1) for i in g) + "]" for g in hint)]
+    parts: list = [vision.SHOT_PLANNER, f"The reel is {duration:.1f}s long with {n} cuts.", "Storyboard:"]
+    for t, ci, frame in board:
+        parts += [f"t={t:.1f}s, cut {ci + 1}", frame]
+    parts.append("Cuts:")
     for c in cuts:
         parts.append(f"Cut {c.index + 1}: {c.start:.2f}s to {c.end:.2f}s ({c.length:.1f}s), camera: "
                      f"{describe_motion(c.stats or ShotStats())}, detected transition in: {c.transition_in}")
-        parts += _plan_frames(c, per_cut)
+    parts.append("Fingerprint hint: " + " ".join("[" + ",".join(str(i + 1) for i in g) + "]" for g in hint))
     for attempt in range(2):
         plan = vision.ask(vision.content(parts), vision.ShotPlan, max_tokens=16000, effort="high")
         groups = [[k - 1 for k in s.cut_numbers] for s in plan.setups]
         problem = _partition_problem(groups, n)
         if problem is None:
+            log.info("Shot plan: %s | %s", plan.summary, plan.shoot_notes[:400])
             return plan
         log.warning("Shot plan attempt %d didn't cover every cut once: %s", attempt + 1, problem)
         parts.append(f"Your previous answer had {problem}. Answer again: every cut from 1 to {n} must "
-                     "appear in exactly one setup.")
+                     "appear in exactly one take.")
     return None
 
 
@@ -380,9 +390,10 @@ def analyze(path: str) -> dict:
             c.transition_in = detect_transition(reader, c.start, c)
         reel_frames = [reader.small_at(t) for t in np.linspace(0.05, 0.95, 6) * info.duration]
         reel_frames = [f for f in reel_frames if f is not None]
+        board = storyboard(reader, cuts, info.duration)
 
     hint = cluster(cuts, settings.group_threshold)
-    plan = plan_setups(cuts, hint, info.duration)
+    plan = plan_setups(cuts, hint, info.duration, board)
     if plan is not None:
         setups = _setups_from_plan(cuts, plan)
         summary = plan.summary
