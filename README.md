@@ -61,12 +61,12 @@ Lovable app ──upload──▶ Supabase Storage
 
 | | |
 |---|---|
-| Supabase project | `mqbvbhtwhjzhfvvgzxif` (organization **ReelCraft**, us-east-2) |
-| API URL | `https://mqbvbhtwhjzhfvvgzxif.supabase.co` |
-| Done | Both migrations applied, `reelcraft` + `reelcraft-callback` deployed, security advisor clean |
-| To do | Edge function secrets, Railway service, Vercel app, Auth Site URL |
+| Web app (Vercel) | https://reelcraft-b4aj.vercel.app (root directory `web`) |
+| Video service (Railway) | https://reelcraft-production-1409.up.railway.app (built from the root `Dockerfile`) |
+| Supabase project | `mqbvbhtwhjzhfvvgzxif`, organization **ReelCraft** (free plan: 50 MB per-file upload limit) |
 
-The anon key for `VITE_SUPABASE_ANON_KEY` is in Supabase › Project Settings › API (it's public by design).
+Secrets live only in Railway variables and Supabase › Edge Functions › Secrets, never in this repo.
+The anon key for `VITE_SUPABASE_ANON_KEY` is in Supabase › Project Settings › API (public by design).
 
 ## Deploy
 
