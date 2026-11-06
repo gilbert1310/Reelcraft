@@ -61,16 +61,38 @@ async function startJob(db: SupabaseClient, userId: string, kind: string, refId:
   const job = must(await db.from("jobs").insert({ user_id: userId, kind, ref_id: refId, meta })
     .select("id").single(), "job") as Row;
   const callback = `${env("SUPABASE_URL")}/functions/v1/reelcraft-callback`;
-  const res = await fetch(`${env("REELCRAFT_SERVICE_URL").replace(/\/$/, "")}${endpoint}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": env("REELCRAFT_API_KEY") },
-    body: JSON.stringify({ ...payload, job_id: job.id, callback_url: callback }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    await db.from("jobs").update({ status: "failed", error: text.slice(0, 500), finished_at: new Date().toISOString() })
+  const fail = async (detail: string, userMessage: string): Promise<never> => {
+    // Details go to the job row and the function logs, never to the user (they can contain config).
+    console.error(`job ${job.id} (${kind}) could not start: ${detail}`);
+    await db.from("jobs").update({ status: "failed", error: detail.slice(0, 500), finished_at: new Date().toISOString() })
       .eq("id", job.id);
-    throw new HttpError(502, `Video service rejected the job: ${text.slice(0, 200)}`);
+    throw new HttpError(502, userMessage);
+  };
+  let base: URL;
+  try {
+    base = new URL(env("REELCRAFT_SERVICE_URL"));
+    if (base.protocol !== "https:" && base.protocol !== "http:") throw new Error("not http(s)");
+  } catch {
+    return await fail("REELCRAFT_SERVICE_URL is not a valid http(s) URL",
+      "The video service address isn't set up correctly. Check REELCRAFT_SERVICE_URL in Supabase secrets.");
+  }
+  let res: Response;
+  try {
+    res = await fetch(`${base.origin}${base.pathname.replace(/\/$/, "")}${endpoint}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": env("REELCRAFT_API_KEY") },
+      body: JSON.stringify({ ...payload, job_id: job.id, callback_url: callback }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (e) {
+    return await fail(`fetch failed: ${e}`, "Couldn't reach the video service. Is it running?");
+  }
+  if (!res.ok) {
+    const text = (await res.text()).slice(0, 300);
+    const hint = res.status === 401 ? "The video service rejected our key. Check REELCRAFT_API_KEY matches in Supabase and Railway."
+      : res.status === 503 ? "The video service isn't configured yet (REELCRAFT_API_KEY missing on Railway)."
+      : `The video service refused the job (HTTP ${res.status}).`;
+    return await fail(`HTTP ${res.status}: ${text}`, hint);
   }
   return job.id;
 }
