@@ -1,0 +1,19 @@
+-- Indexes for foreign keys. user_id ones matter most: every RLS policy filters on user_id.
+create index if not exists uploads_user_id_idx on public.uploads (user_id);
+create index if not exists setups_user_id_idx on public.setups (user_id);
+create index if not exists cuts_user_id_idx on public.cuts (user_id);
+create index if not exists projects_user_id_idx on public.projects (user_id);
+create index if not exists projects_upload_id_idx on public.projects (upload_id);
+create index if not exists captures_user_id_idx on public.captures (user_id);
+create index if not exists captures_setup_id_idx on public.captures (setup_id);
+create index if not exists captures_suggested_setup_id_idx on public.captures (suggested_setup_id);
+create index if not exists cut_matches_user_id_idx on public.cut_matches (user_id);
+create index if not exists cut_matches_cut_id_idx on public.cut_matches (cut_id);
+create index if not exists jobs_user_id_idx on public.jobs (user_id);
+create index if not exists wrap_checks_user_id_idx on public.wrap_checks (user_id);
+create index if not exists wrap_checks_project_id_idx on public.wrap_checks (project_id);
+create index if not exists raw_projects_user_id_idx on public.raw_projects (user_id);
+create index if not exists raw_projects_chosen_recipe_id_idx on public.raw_projects (chosen_recipe_id);
+create index if not exists raw_clips_user_id_idx on public.raw_clips (user_id);
+create index if not exists recipes_user_id_idx on public.recipes (user_id);
+create index if not exists recipes_source_upload_id_idx on public.recipes (source_upload_id);

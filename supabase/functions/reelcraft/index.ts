@@ -1,4 +1,4 @@
-// ReelCraft app API. The Lovable app calls:
+// ReelCraft app API. The web app calls:
 //   supabase.functions.invoke("reelcraft", { body: { action: "...", ...params } })
 // Every action checks the row belongs to the signed-in user, records a job, and hands
 // the heavy work to the Python video service, which reports back to reelcraft-callback.

@@ -57,6 +57,17 @@ Lovable app ──upload──▶ Supabase Storage
 | `revise` | `raw_project_id`, `instruction` | "More slow motion" → new plan + preview |
 | `export` | `raw_project_id` | Full-res MP4 + Resolve timelines |
 
+## Live project
+
+| | |
+|---|---|
+| Supabase project | `mqbvbhtwhjzhfvvgzxif` (organization **ReelCraft**, us-east-2) |
+| API URL | `https://mqbvbhtwhjzhfvvgzxif.supabase.co` |
+| Done | Both migrations applied, `reelcraft` + `reelcraft-callback` deployed, security advisor clean |
+| To do | Edge function secrets, Railway service, Vercel app, Auth Site URL |
+
+The anon key for `VITE_SUPABASE_ANON_KEY` is in Supabase › Project Settings › API (it's public by design).
+
 ## Deploy
 
 ### 1. Supabase
