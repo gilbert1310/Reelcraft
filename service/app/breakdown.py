@@ -294,6 +294,12 @@ def _partition_problem(groups: list[list[int]], n: int) -> str | None:
     return "; ".join(bits) or "an empty take"
 
 
+def _plan_groups(plan: vision.ShotPlan) -> list[list[int]]:
+    """0-based cut groups for the coverage check: one per take, plus the graphics."""
+    groups = [[k - 1 for k in s.cut_numbers] for s in plan.setups]
+    return groups + ([[k - 1 for k in plan.graphics]] if plan.graphics else [])
+
+
 def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
                 board: list[tuple[float, int, np.ndarray]]) -> vision.ShotPlan | None:
     """Show the vision AI the whole reel as a storyboard and ask which takes were filmed.
@@ -310,7 +316,7 @@ def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
     draft = None
     for attempt in range(2):
         plan = vision.ask(vision.content(parts), vision.ShotPlan, max_tokens=16000, effort="high")
-        problem = _partition_problem([[k - 1 for k in s.cut_numbers] for s in plan.setups], n)
+        problem = _partition_problem(_plan_groups(plan), n)
         if problem is None:
             draft = plan
             break
@@ -330,7 +336,7 @@ def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
     except Exception:
         log.exception("Plan audit failed; using the draft")
         return draft
-    problem = _partition_problem([[k - 1 for k in s.cut_numbers] for s in audited.setups], n)
+    problem = _partition_problem(_plan_groups(audited), n)
     if problem is not None:
         log.warning("Audited plan didn't cover every cut once (%s); using the draft", problem)
         return draft
@@ -339,7 +345,7 @@ def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float,
 
 
 def _setup_row(cuts: list[Cut], members: list[int], n: int, description: str, angle: str, subject: str,
-               film_seconds: float, tip: str) -> dict:
+               film_seconds: float, tip: str, is_graphic: bool = False) -> dict:
     used = sum(cuts[i].length / cuts[i].speed for i in members)
     emb = normalize(np.mean([cuts[i].embedding for i in members], axis=0))
     return {
@@ -348,7 +354,8 @@ def _setup_row(cuts: list[Cut], members: list[int], n: int, description: str, an
         "angle": angle,
         "subject": subject,
         # Always leave the editor at least 2x what the edit uses, and never under 5 seconds.
-        "film_duration_seconds": round(max(film_seconds, used * 2, 5.0), 1),
+        "film_duration_seconds": 0 if is_graphic else round(max(film_seconds, used * 2, 5.0), 1),
+        "is_graphic": is_graphic,
         "beginner_tip": tip,
         "motion": describe_motion(cuts[members[0]].stats),
         "embedding": _vec(emb),
@@ -375,6 +382,13 @@ def _setups_from_plan(cuts: list[Cut], plan: vision.ShotPlan) -> list[dict]:
             cuts[i].group = n - 1
         setups.append(_setup_row(cuts, members, n, ps.description, ps.angle, ps.subject,
                                  ps.film_duration_seconds, ps.beginner_tip))
+    if plan.graphics:
+        members = sorted(k - 1 for k in plan.graphics)
+        n = len(setups) + 1
+        for i in members:
+            cuts[i].group = n - 1
+        setups.append(_setup_row(cuts, members, n, "Added in the edit (logo, end card or title). Nothing to film.",
+                                 "other", "graphic", 0, "", is_graphic=True))
     return setups
 
 

@@ -203,4 +203,34 @@ def test_audit_pass_can_add_a_missed_take(media, monkeypatch):
 
 def test_planner_prompt_has_no_fixed_example_list():
     from app import vision
-    assert "walks away" not in vision.SHOT_PLANNER and "do not assume any particular number" in vision.SHOT_PLANNER
+    p = vision.SHOT_PLANNER.lower()
+    # Generic guidance only: nothing copied from a specific reel.
+    assert "hand on head" not in p and "turns around to look" not in p
+    assert "fewest takes" in p and "graphics" in p
+
+
+def test_graphics_are_not_takes_and_render_black(media, tmp_path, monkeypatch):
+    from app import breakdown, vision
+    res = _analysis(media)
+
+    def fake_ask(parts, schema, **kw):
+        if schema is vision.ShotPlan:
+            return vision.ShotPlan(shoot_notes="x", summary="1 take + end card", graphics=[6], setups=[
+                vision.PlannedSetup(setup_number=1, cut_numbers=[1, 2, 3, 4, 5], description="d", angle="front",
+                                    subject="s", film_duration_seconds=10, beginner_tip="t", reason="r")], cuts=[])
+        return vision._mock(schema, parts)
+    monkeypatch.setattr(vision, "ask", fake_ask)
+    out = breakdown.analyze(str(media["reel"]))
+    takes = [s for s in out["setups"] if not s["is_graphic"]]
+    graphic = [s for s in out["setups"] if s["is_graphic"]]
+    assert len(takes) == 1 and len(graphic) == 1 and graphic[0]["film_duration_seconds"] == 0
+    assert out["cuts"][5]["setup_number"] == graphic[0]["setup_number"]
+
+    # Assembly with no clip for the graphic: black placeholder, no reshoot request.
+    monkeypatch.setattr(assemble, "download", lambda url, dest, *a, **k: Path(url[7:]))
+    p = _payload(media, out)
+    p["captures"] = [{**p["captures"][0], "setup_number": takes[0]["setup_number"]}]
+    p["graphic_setups"] = [graphic[0]["setup_number"]]
+    res2 = assemble.assemble(p, tmp_path)
+    assert not any(5 in r["cut_order_indexes"] for r in res2["reshoots"])  # the end card never asks for a reshoot
+    assert res2["cut_matches"][5]["fixes"][0].startswith("Graphic")

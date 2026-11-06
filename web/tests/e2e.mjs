@@ -246,7 +246,7 @@ await step("stage 1: paste link → shoot plan", async () => {
   await page.getByRole("button", { name: "Analyse" }).click();
   await page.getByText("Breaking down your reel…").waitFor();
   await shot("03-plan-busy");
-  await page.getByText("Setup 3").waitFor({ timeout: 15000 });
+  await page.getByText("Take 3").waitFor({ timeout: 15000 });
   await page.getByText("This reel uses").waitFor();
   await page.waitForTimeout(400);
   await shot("04-shoot-plan");

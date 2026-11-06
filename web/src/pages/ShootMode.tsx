@@ -36,7 +36,8 @@ export default function ShootMode() {
 
   const { data, reload } = useLoad(async () => {
     const project = must(await supabase.from("projects").select("*").eq("id", projectId!).single()) as Project;
-    const setups = must(await supabase.from("setups").select("*").eq("upload_id", project.upload_id).order("setup_number")) as Setup[];
+    const setups = (must(await supabase.from("setups").select("*").eq("upload_id", project.upload_id).order("setup_number")) as Setup[])
+      .filter((s) => !s.is_graphic);
     const captures = must(await supabase.from("captures").select("id,setup_id,check_status").eq("project_id", project.id)) as Capture[];
     return { project, setups, captures };
   }, [projectId]);
@@ -217,7 +218,7 @@ export default function ShootMode() {
         </div>
         <div className="setup-card">
           <div className="row" style={{ gap: 8 }}>
-            <strong>Setup {current.setup_number}</strong><AngleBadge angle={current.angle} />
+            <strong>Take {current.setup_number}</strong><AngleBadge angle={current.angle} />
             <span className="grow" />
             <span className="small muted">Target {Math.round(target)}s</span>
           </div>

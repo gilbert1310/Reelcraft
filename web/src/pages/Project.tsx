@@ -25,7 +25,7 @@ export default function ProjectPage() {
         : Promise.resolve({ data: [], error: null }),
     ]);
     return {
-      project, setups: must(setups) as Setup[], captures: must(captures) as Capture[],
+      project, setups: (must(setups) as Setup[]).filter((s) => !s.is_graphic), captures: must(captures) as Capture[],
       cuts: must(cuts) as Cut[], matches: must(matches) as CutMatch[],
     };
   }, [projectId]);
@@ -97,7 +97,7 @@ export default function ProjectPage() {
               <div className="row" style={{ alignItems: "flex-start" }}>
                 <Thumb path={s.thumbnail_path} small />
                 <div className="grow">
-                  <div className="row" style={{ gap: 8 }}><strong>Setup {s.setup_number}</strong><AngleBadge angle={s.angle} />
+                  <div className="row" style={{ gap: 8 }}><strong>Take {s.setup_number}</strong><AngleBadge angle={s.angle} />
                     {passed(s) && <span className="badge good">✓ Captured</span>}</div>
                   <p className="muted small" style={{ margin: "4px 0 0" }}>{s.description}</p>
                 </div>

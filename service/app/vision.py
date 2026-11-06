@@ -63,7 +63,8 @@ class SetupBreakdown(SetupDirection):
 class PlannedSetup(BaseModel):
     setup_number: int
     cut_numbers: list[int] = Field(description="Every cut filmed in this one continuous take")
-    description: str = Field(description="One filming direction for the whole take")
+    description: str = Field(description="Where to put the camera and how to film, then 'Direct her/him "
+                             "through:' and the numbered beats to call out, in order")
     angle: Angle
     subject: str
     film_duration_seconds: float
@@ -72,10 +73,12 @@ class PlannedSetup(BaseModel):
 
 
 class ShotPlan(BaseModel):
-    shoot_notes: str = Field(description="First, what physically happened on set: each camera position "
-                             "relative to the subject and what the subject did there, in story order")
+    shoot_notes: str = Field(description="First, what physically happened on set: each location and camera "
+                             "placement, and everything the subject did there, in story order")
     summary: str = Field(description="One or two plain sentences: how many takes and what they are")
     setups: list[PlannedSetup]
+    graphics: list[int] = Field(default_factory=list, description="Cut numbers that are not filmed footage: "
+                                "logo or end cards, title or text cards, blank frames added in the edit")
     cuts: list[CutDetail] = Field(description="One entry per cut, by cut number")
 
 
@@ -151,44 +154,52 @@ CINEMATOGRAPHER = (
 
 
 SHOT_PLANNER = (
-    "You are a senior cinematographer planning a reshoot. Below is a storyboard of one short-form reel: "
-    "frames sampled every half-second from start to end, each stamped with its time and the edit cut it "
-    "belongs to, followed by the list of cuts with timing and measured camera motion.\n\n"
-    "Work out every TAKE the videographer filmed: each separate time they pressed record. Do not think in "
-    "cuts. Editors slice takes into many cuts and interleave them, so a reel usually has far fewer takes "
-    "than cuts, but do not assume any particular number. A take is defined by two things: where the "
-    "camera is relative to the subject (in front, behind, beside, above, below, close or far, moving with "
-    "them or fixed), and the one continuous thing the subject does while it rolls.\n\n"
-    "Step 1: watch the storyboard as a story and write shoot_notes: every camera position you can see, and "
-    "what the subject does there from start to finish. Include brief moments: a one-second detail shot or "
-    "a cutaway is still a take that has to be filmed.\n"
-    "Step 2: turn those into takes. Cuts belong to the same take when they show the same camera position "
-    "and the same continuous performance, even if they are far apart in the edit, tighter or wider "
-    "(editors punch in; filming in 4K covers this), faster or in slow motion (filmed at 60fps), or later in "
-    "the same movement. Start a new take when the camera is somewhere else, or when the subject starts a "
-    "different performance. Missing a take is worse than an extra one: the videographer could not "
-    "recreate those cuts. So keep separate anything you are unsure about, and otherwise use the fewest "
-    "takes that recreate every cut.\n"
+    "You are an experienced videographer and director planning how to shoot a copy of this reel in one "
+    "efficient session. Below is a storyboard of the reel (frames every half-second, each stamped with its "
+    "time and the edit cut it belongs to), then the list of cuts with timing and measured camera motion.\n\n"
+    "Plan the TAKES: each time the videographer sets up the camera and presses record. Think like someone "
+    "on set with a model and a phone or camera, not like an editor counting cuts. Editors slice a few long "
+    "takes into many short cuts, so plan the fewest takes that a real crew would shoot to get every cut. "
+    "For a 15 to 60 second reel that is usually 3 to 6 takes; go beyond that only when the reel truly has "
+    "more locations or camera placements.\n\n"
+    "Organise takes by location and camera placement. Inside one take the model performs a flow of beats "
+    "while the camera keeps rolling, so these do NOT need a new take:\n"
+    "- changes of pose, gesture, expression or hand position (a smile, a hand gesture, a look away and "
+    "back);\n"
+    "- the model turning to show a profile or her back while the camera stays put;\n"
+    "- repeating the same movement several times with variations (walk towards camera three times, "
+    "changing the hands each pass);\n"
+    "- full, medium and close framing from the same spot (shoot in 4K and crop in, or step closer between "
+    "beats);\n"
+    "- slow motion or speed ramps (shoot at 60fps);\n"
+    "- a walk that passes the camera and continues away (pivot and keep filming).\n"
+    "Start a new take only for a different location or background, a clearly different camera height or "
+    "angle (for example a low-angle face close-up), a different lens feel (very wide vs long), or a camera "
+    "move that can't be done in the same recording.\n"
     "Ignore app interface overlays (usernames, buttons, captions, progress bars): the video may be a "
-    "screen recording. The fingerprint hint is a rough colour-similarity grouping that usually over-splits; "
-    "use it only as a clue.\n\n"
-    "For each take give: the cut numbers it covers (every cut exactly once across all takes), one filming "
-    "direction for the whole take (camera position and height, framing and lens feel, movement and speed, "
-    "the subject's action from start to end, lighting and mood, focus, slow motion), how many seconds to "
-    "film so every one of its cuts is covered in order with margin, one practical beginner tip, and a "
-    "one-line reason these cuts are one take. Number takes in the order they first appear. For each cut "
-    "give a few-word action, the transition into it (keep the detected one unless the frames clearly show "
-    "otherwise; 'match' for a match cut) and whether it plays in slow motion. Finish with a plain summary "
-    "of how many takes and what each one is."
+    "screen recording. Cuts that are not filmed at all (logo or end cards, title or text cards, blank "
+    "frames) go in graphics, not in a take. The fingerprint hint is a rough colour-similarity grouping that "
+    "over-splits; use it only as a clue.\n\n"
+    "Step 1: watch the storyboard as a story and write shoot_notes: each location and camera placement, "
+    "and everything the subject does there.\n"
+    "Step 2: plan the takes. For each take give the cut numbers it covers (every cut appears exactly once "
+    "across takes and graphics); a description that says where to put the camera and how to film (height, "
+    "framing and lens feel, movement, light, focus, frame rate), followed by 'Direct her through:' (or "
+    "him/them) and the numbered beats to call out in order, so a beginner can run the take; seconds to film "
+    "so every beat is covered with margin; one practical beginner tip; and a one-line reason these cuts "
+    "come from one take. Number takes in the order they first appear. For each cut give a few-word action, "
+    "the transition into it (keep the detected one unless the frames clearly show otherwise; 'match' for "
+    "a match cut) and whether it plays in slow motion. Finish with a plain summary such as 'Filmed as 5 "
+    "takes: …', naming each take."
 )
 
 PLAN_AUDIT = (
-    "Now audit the draft plan above against the storyboard, as a second cinematographer would. Go "
-    "through every cut one at a time: could it really have been filmed in the take it is assigned to (same "
-    "camera position, same continuous performance)? Move or split anything that could not. Look for takes "
-    "the draft missed, especially short cutaways, detail shots and changes of camera side. Merge two takes "
-    "only if you are certain they are one continuous recording. Return the complete corrected plan in the "
-    "same format (or the same plan if it is already right), with shoot_notes saying what you changed."
+    "Now review the draft plan above as the director on set. Your goal is the fewest takes a real crew "
+    "would shoot. Merge takes that share a location and camera placement: their differences in pose, "
+    "gesture, the model's facing direction, framing or speed become beats inside one take. Check every "
+    "cut is still covered by the take it is in. Move any non-filmed cut (logo or end card, title) to "
+    "graphics. Split a take only if its cuts truly need the camera in a different place. Return the "
+    "complete corrected plan in the same format, with shoot_notes saying what you changed and why."
 )
 
 

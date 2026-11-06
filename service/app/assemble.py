@@ -11,7 +11,7 @@ import numpy as np
 from .config import settings
 from .correct import RenderCut, plan_cut
 from .matching import ClipIndex, index_clip, match_sequence
-from .media import FrameReader, download, normalise, probe, to_jpeg, upload
+from .media import FrameReader, download, ffmpeg, normalise, probe, to_jpeg, upload
 from .motion import ShotStats, analyze_segment
 from .render import _Source, render
 from .timeline import edit_decision_summary, fcpxml, otio_json
@@ -56,7 +56,15 @@ def _thumb(rc: RenderCut, w: int, h: int, fps: float) -> str | None:
         return None
 
 
-def build_cut_plan(ref_cuts: list[dict], clips: list[Clip], out_w: int, out_h: int) -> tuple[list[RenderCut], list[dict]]:
+def _black_clip(tmp: Path, seconds: float, w: int, h: int) -> Clip:
+    path = tmp / "graphic_placeholder.mp4"
+    ffmpeg("-f", "lavfi", "-i", f"color=c=black:s={w - w % 2}x{h - h % 2}:r=30:d={max(seconds, 1.0):.2f}",
+           "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", str(path))
+    return Clip("graphic", str(path), "GRAPHIC_PLACEHOLDER.mp4", None)
+
+
+def build_cut_plan(ref_cuts: list[dict], clips: list[Clip], out_w: int, out_h: int,
+                   graphic_setups: set[int] | None = None, tmp: Path | None = None) -> tuple[list[RenderCut], list[dict]]:
     """Match every reference cut to the best moment in the user's clips for its setup and
     plan corrections. Returns (render cuts in edit order, reshoots)."""
     ref_cuts = sorted(ref_cuts, key=lambda c: c["order_index"])
@@ -66,7 +74,21 @@ def build_cut_plan(ref_cuts: list[dict], clips: list[Clip], out_w: int, out_h: i
 
     chosen: dict[int, tuple[Clip, float, float]] = {}  # order_index -> (clip, start, score)
     reshoots = []
+    graphic_setups = graphic_setups or set()
+    graphic_cuts: set[int] = set()
+    if graphic_setups & set(by_setup):
+        # Logo/end cards aren't filmed: hold their place in the timing with black.
+        g_cuts = [c for sn in graphic_setups for c in by_setup.get(sn, [])]
+        black = _black_clip(tmp or Path(clips[0].path).parent, sum(c["end_time"] - c["start_time"] for c in g_cuts) + 1,
+                            out_w, out_h)
+        cursor = 0.0
+        for c in g_cuts:
+            chosen[c["order_index"]] = (black, cursor, 1.0)
+            graphic_cuts.add(c["order_index"])
+            cursor += c["end_time"] - c["start_time"]
     for sn, cuts in by_setup.items():
+        if sn in graphic_setups:
+            continue
         pool = [cl for cl in clips if cl.setup_number == sn]
         if not pool:
             reshoots.append({"setup_number": sn, "cut_order_indexes": [c["order_index"] for c in cuts],
@@ -95,6 +117,10 @@ def build_cut_plan(ref_cuts: list[dict], clips: list[Clip], out_w: int, out_h: i
                            src_w=w, src_h=h, src_fps=cl.info.fps, src_in=start, speed=speed,
                            out_len=out_len, transition_in=c.get("transition_in") or "cut",
                            cut_id=c.get("id"), setup_number=int(c["setup_number"]))
+            if c["order_index"] in graphic_cuts:
+                rc.fixes, rc.score = ["Graphic: add your logo or end card in the editor"], 100
+                plan.append(rc)
+                continue
             r = readers.setdefault(cl.path, FrameReader(cl.path))
             user_stats = analyze_segment(r, start, start + rc.src_len)
             plan.append(plan_cut(rc, ShotStats.from_dict(c.get("stats")), user_stats, out_w, out_h, score))
@@ -110,7 +136,8 @@ def assemble(payload: dict, tmp: Path) -> dict:
     fps = float(payload.get("fps") or 30)
     fps = 30.0 if fps > 61 or fps < 15 else fps
     clips = load_clips(payload["captures"], tmp)
-    plan, reshoots = build_cut_plan(payload["cuts"], clips, out_w, out_h)
+    plan, reshoots = build_cut_plan(payload["cuts"], clips, out_w, out_h,
+                                    set(int(n) for n in payload.get("graphic_setups") or []), tmp)
     return finish(plan, payload, tmp, out_w, out_h, fps, reshoots, payload.get("title") or "ReelCraft edit")
 
 

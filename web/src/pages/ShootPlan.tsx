@@ -47,7 +47,9 @@ export default function ShootPlan() {
   }
 
   if (!data) return <Page back="/"><Busy title="Loading…" /></Page>;
-  const { upload, setups } = data;
+  const { upload } = data;
+  const setups = data.setups.filter((s) => !s.is_graphic);
+  const graphics = data.setups.filter((s) => s.is_graphic);
   // A job can be lost if the video service restarts; after a while, offer a restart.
   const minutesRunning = (Date.now() - new Date(upload.updated_at).getTime()) / 60000;
   const tooLong = busy && minutesRunning > 10; // matches STALE_MINUTES in the edge function
@@ -77,24 +79,42 @@ export default function ShootPlan() {
         <div className="stack">
           {upload.plan_summary && <div className="notice"><strong>{upload.plan_summary}</strong></div>}
           <p className="muted">This reel uses <strong style={{ color: "var(--text)" }}>{upload.cut_count} cuts</strong> from
-            just <strong style={{ color: "var(--text)" }}>{upload.setup_count} {upload.setup_count === 1 ? "take" : "takes"}</strong>.
+            just <strong style={{ color: "var(--text)" }}>{setups.length} {setups.length === 1 ? "take" : "takes"}</strong>.
             Film each one once, in one continuous take, for the time shown. The app cuts it up to match.</p>
           {setups.map((s) => (
             <article key={s.id} className="card row" style={{ alignItems: "flex-start" }}>
               <Thumb path={s.thumbnail_path} alt={`Setup ${s.setup_number}`} />
               <div className="grow stack" style={{ gap: 6 }}>
-                <div className="row" style={{ gap: 8 }}><strong>Setup {s.setup_number}</strong><AngleBadge angle={s.angle} /></div>
-                <p style={{ margin: 0 }}>{s.description}</p>
+                <div className="row" style={{ gap: 8 }}><strong>Take {s.setup_number}</strong><AngleBadge angle={s.angle} /></div>
+                <Directions text={s.description} />
                 <span className="small"><strong>Film about {Math.round(Number(s.film_duration_seconds))} seconds</strong></span>
                 {s.beginner_tip && <div className="tip"><span aria-hidden>💡</span><span>{s.beginner_tip}</span></div>}
               </div>
             </article>
           ))}
+          {graphics.length > 0 && (
+            <p className="muted small">Not filmed: {graphics.map((g) => g.description).join(" ")}</p>
+          )}
           <ErrorBox>{error}</ErrorBox>
           <button className="btn primary big block" onClick={startShooting}>Start Shooting</button>
         </div>
       )}
       {busy && <ErrorBox>{error}</ErrorBox>}
     </Page>
+  );
+}
+
+/** Shows "how to film" and then the numbered beats to call out, one per line. */
+export function Directions({ text }: { text: string | null }) {
+  if (!text) return null;
+  const m = text.match(/^(.*?)(Direct (?:her|him|them) through:)(.*)$/s);
+  if (!m) return <p style={{ margin: 0 }}>{text}</p>;
+  const beats = m[3].split(/\s*\d+[.)]\s+/).map((b) => b.trim()).filter(Boolean);
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <p style={{ margin: 0 }}>{m[1].trim()}</p>
+      <strong className="small">{m[2]}</strong>
+      <ol style={{ margin: 0, paddingLeft: 20 }}>{beats.map((b, i) => <li key={i}>{b}</li>)}</ol>
+    </div>
   );
 }

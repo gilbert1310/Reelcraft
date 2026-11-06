@@ -72,7 +72,7 @@ const HANDLERS: Record<string, Handler> = {
     const setupRows = must(await db.from("setups").insert(result.setups.map((s: Row) => ({
       upload_id: uploadId, user_id: userId, setup_number: s.setup_number, description: s.description,
       angle: s.angle, subject: s.subject, motion: s.motion, film_duration_seconds: s.film_duration_seconds,
-      beginner_tip: s.beginner_tip, embedding: toVector(s.embedding),
+      beginner_tip: s.beginner_tip, embedding: toVector(s.embedding), is_graphic: Boolean(s.is_graphic),
     }))).select("id,setup_number"), "insert setups") as Row[];
     const setupId = new Map(setupRows.map((s) => [s.setup_number, s.id]));
 

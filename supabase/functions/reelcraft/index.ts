@@ -237,7 +237,7 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<Row>> = {
     const caps = must(await db.from("captures").select("*").eq("project_id", project.id).eq("user_id", userId), "captures") as Row[];
     const usable = caps.filter((c) => c.setup_id && (c.check_status === "pass" || (body.force && c.check_status !== "failed")));
     const setupNumber = new Map(setups.map((s) => [s.id, s.setup_number]));
-    const missingSetups = setups.filter((s) => !usable.some((c) => c.setup_id === s.id));
+    const missingSetups = setups.filter((s) => !s.is_graphic && !usable.some((c) => c.setup_id === s.id));
     if (missingSetups.length && !body.force) {
       throw new HttpError(409, `Still need a passing clip for setup ${missingSetups.map((s) => s.setup_number).join(", ")}`);
     }
@@ -249,6 +249,7 @@ const ACTIONS: Record<string, (ctx: Ctx) => Promise<Row>> = {
       project_id: project.id,
       title: project.title ?? "ReelCraft edit",
       fps: Number(up.fps) || 30,
+      graphic_setups: setups.filter((s) => s.is_graphic).map((s) => s.setup_number),
       captures: await Promise.all(usable.map(async (c) => ({
         id: c.id, url: await signedUrl(db, "captures", c.storage_path, userId),
         file_name: c.file_name ?? c.storage_path.split("/").pop(), setup_number: setupNumber.get(c.setup_id),
