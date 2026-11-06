@@ -123,6 +123,8 @@ def verify_groups(cuts: list[Cut], groups: list[list[int]]) -> list[list[int]]:
             verdict = vision.ask(vision.content(parts), vision.GroupVerdict)
             proposed = [[n - 1 for n in grp] for grp in verdict.groups]
             out += proposed if _valid_partition(proposed, set(g)) else [g]
+        except vision.VisionUnavailable:
+            raise
         except Exception:
             log.exception("Group verification failed; keeping embedding grouping")
             out.append(g)
@@ -139,6 +141,8 @@ def verify_groups(cuts: list[Cut], groups: list[list[int]]) -> list[list[int]]:
         verdict = vision.ask(vision.content(parts), vision.MergeVerdict)
         if _valid_partition(verdict.groups, set(range(1, len(out) + 1))):
             out = [sorted(i for n in grp for i in out[n - 1]) for grp in verdict.groups]
+    except vision.VisionUnavailable:
+        raise
     except Exception:
         log.exception("Setup merge check failed; keeping groups")
     return sorted(out, key=lambda g: g[0])
@@ -227,6 +231,8 @@ def build_recipe(cuts: list[Cut], setups: list[dict], duration: float, reel_fram
         tags = vision.ask(vision.content(parts), vision.RecipeTags)
         recipe.update(genre=tags.genre, moods=[m.lower() for m in tags.moods], style_name=tags.style_name,
                       summary=tags.summary)
+    except vision.VisionUnavailable:
+        raise
     except Exception:
         log.exception("Recipe tagging failed")
         recipe.update(genre="general", moods=[], style_name="Untitled style",
@@ -245,6 +251,115 @@ def _vec(v: np.ndarray) -> list[float]:
 
 def _thumb(img: np.ndarray) -> str:
     return base64.b64encode(to_jpeg(img, 360, 78)).decode()
+
+
+# ---------- 3. Plan the takes (whole reel at once) ----------
+
+MAX_PLAN_IMAGES = 96
+
+
+def _plan_frames(c: Cut, per_cut: int) -> list[np.ndarray]:
+    if per_cut >= 3:
+        return [c.frames[0], c.mid, c.frames[-1]]
+    if per_cut == 2:
+        return [c.frames[0], c.frames[-1]]
+    return [c.mid]
+
+
+def _partition_problem(groups: list[list[int]], n: int) -> str | None:
+    flat = [i for g in groups for i in g]
+    missing = sorted(set(range(n)) - set(flat))
+    dupes = sorted({i for i in flat if flat.count(i) > 1})
+    extra = sorted(set(flat) - set(range(n)))
+    if not (missing or dupes or extra) and all(groups):
+        return None
+    bits = []
+    if missing:
+        bits.append("missing cuts " + ", ".join(str(i + 1) for i in missing))
+    if dupes:
+        bits.append("cuts in more than one setup: " + ", ".join(str(i + 1) for i in dupes))
+    if extra:
+        bits.append("cut numbers that don't exist: " + ", ".join(str(i + 1) for i in extra))
+    return "; ".join(bits) or "an empty setup"
+
+
+def plan_setups(cuts: list[Cut], hint: list[list[int]], duration: float) -> vision.ShotPlan | None:
+    """Show the vision AI every cut at once and ask for the fewest takes that recreate the reel.
+    Returns None if the reel is too long for one request or the answer never covers every cut."""
+    n = len(cuts)
+    per_cut = 3 if n * 3 <= MAX_PLAN_IMAGES and n <= 20 else 2 if n * 2 <= MAX_PLAN_IMAGES else 1
+    if n > MAX_PLAN_IMAGES:
+        return None
+    parts: list = [vision.SHOT_PLANNER,
+                   f"The reel is {duration:.1f}s long with {n} cuts.",
+                   "Fingerprint hint (automatic visual similarity; it often splits one take into several): " +
+                   " ".join("[" + ",".join(str(i + 1) for i in g) + "]" for g in hint)]
+    for c in cuts:
+        parts.append(f"Cut {c.index + 1}: {c.start:.2f}s to {c.end:.2f}s ({c.length:.1f}s), camera: "
+                     f"{describe_motion(c.stats or ShotStats())}, detected transition in: {c.transition_in}")
+        parts += _plan_frames(c, per_cut)
+    for attempt in range(2):
+        plan = vision.ask(vision.content(parts), vision.ShotPlan, max_tokens=16000, effort="high")
+        groups = [[k - 1 for k in s.cut_numbers] for s in plan.setups]
+        problem = _partition_problem(groups, n)
+        if problem is None:
+            return plan
+        log.warning("Shot plan attempt %d didn't cover every cut once: %s", attempt + 1, problem)
+        parts.append(f"Your previous answer had {problem}. Answer again: every cut from 1 to {n} must "
+                     "appear in exactly one setup.")
+    return None
+
+
+def _setup_row(cuts: list[Cut], members: list[int], n: int, description: str, angle: str, subject: str,
+               film_seconds: float, tip: str) -> dict:
+    used = sum(cuts[i].length / cuts[i].speed for i in members)
+    emb = normalize(np.mean([cuts[i].embedding for i in members], axis=0))
+    return {
+        "setup_number": n,
+        "description": description,
+        "angle": angle,
+        "subject": subject,
+        # Always leave the editor at least 2x what the edit uses, and never under 5 seconds.
+        "film_duration_seconds": round(max(film_seconds, used * 2, 5.0), 1),
+        "beginner_tip": tip,
+        "motion": describe_motion(cuts[members[0]].stats),
+        "embedding": _vec(emb),
+    }
+
+
+def _apply_cut_details(cuts: list[Cut], details: list[vision.CutDetail]) -> None:
+    for cd in details:
+        i = cd.cut_number - 1
+        if 0 <= i < len(cuts):
+            cuts[i].action = cd.action
+            if i > 0 and cd.transition_in in ("match", "dissolve", "whip", "zoom", "cut"):
+                cuts[i].transition_in = cd.transition_in
+            cuts[i].speed = 0.5 if cd.slow_motion else 1.0
+
+
+def _setups_from_plan(cuts: list[Cut], plan: vision.ShotPlan) -> list[dict]:
+    _apply_cut_details(cuts, plan.cuts)
+    ordered = sorted(plan.setups, key=lambda s: min(s.cut_numbers))
+    setups = []
+    for n, ps in enumerate(ordered, 1):
+        members = sorted(k - 1 for k in ps.cut_numbers)
+        for i in members:
+            cuts[i].group = n - 1
+        setups.append(_setup_row(cuts, members, n, ps.description, ps.angle, ps.subject,
+                                 ps.film_duration_seconds, ps.beginner_tip))
+    return setups
+
+
+def _setups_by_review(cuts: list[Cut], groups: list[list[int]]) -> list[dict]:
+    setups = []
+    for n, members in enumerate(groups, 1):
+        for i in members:
+            cuts[i].group = n - 1
+        d = describe_setup(cuts, members)
+        _apply_cut_details(cuts, d.cuts)
+        setups.append(_setup_row(cuts, members, n, d.description, d.angle, d.subject,
+                                 d.film_duration_seconds, d.beginner_tip))
+    return setups
 
 
 # ---------- Pipeline ----------
@@ -266,43 +381,15 @@ def analyze(path: str) -> dict:
         reel_frames = [reader.small_at(t) for t in np.linspace(0.05, 0.95, 6) * info.duration]
         reel_frames = [f for f in reel_frames if f is not None]
 
-    groups = verify_groups(cuts, cluster(cuts, settings.group_threshold))
-    for n, g in enumerate(groups):
-        for i in g:
-            cuts[i].group = n
-
-    setups = []
-    for n, members in enumerate(groups):
-        try:
-            d = describe_setup(cuts, members)
-        except vision.VisionRefused:
-            raise
-        except Exception:
-            log.exception("Describe failed for setup %d", n + 1)
-            d = vision.SetupBreakdown(description="Recreate this shot as shown in the reference frames.",
-                                      angle="other", subject="subject",
-                                      film_duration_seconds=0, beginner_tip="", cuts=[])
-        by_num = {cd.cut_number - 1: cd for cd in d.cuts}
-        for i in members:
-            if i in by_num:
-                cd = by_num[i]
-                cuts[i].action = cd.action
-                if i > 0 and cd.transition_in in ("match", "dissolve", "whip", "zoom"):
-                    cuts[i].transition_in = cd.transition_in
-                cuts[i].speed = 0.5 if cd.slow_motion else 1.0
-        used = sum(cuts[i].length / cuts[i].speed for i in members)
-        emb = normalize(np.mean([cuts[i].embedding for i in members], axis=0))
-        setups.append({
-            "setup_number": n + 1,
-            "description": d.description,
-            "angle": d.angle,
-            "subject": d.subject,
-            # Always leave the editor at least 2x what the edit uses, and never under 5 seconds.
-            "film_duration_seconds": round(max(d.film_duration_seconds, used * 2, 5.0), 1),
-            "beginner_tip": d.beginner_tip,
-            "motion": describe_motion(cuts[members[0]].stats),
-            "embedding": _vec(emb),
-        })
+    hint = cluster(cuts, settings.group_threshold)
+    plan = plan_setups(cuts, hint, info.duration)
+    if plan is not None:
+        setups = _setups_from_plan(cuts, plan)
+        summary = plan.summary
+    else:
+        log.warning("Falling back to per-group review")
+        setups = _setups_by_review(cuts, verify_groups(cuts, hint))
+        summary = f"Filmed as {len(setups)} takes."
     cuts[0].transition_in = "cut"
 
     recipe = build_recipe(cuts, setups, info.duration, reel_frames)
@@ -310,6 +397,7 @@ def analyze(path: str) -> dict:
         "video": {"duration": info.duration, "fps": info.fps, "width": info.display_size[0],
                   "height": info.display_size[1]},
         "embedder": embedder_name(),
+        "plan_summary": summary,
         "setups": setups,
         "cuts": [{
             "order_index": c.index,

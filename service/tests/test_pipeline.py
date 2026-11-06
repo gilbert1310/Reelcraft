@@ -135,3 +135,32 @@ def test_stage3_suggest_revise_export(media, tmp_path, monkeypatch):
 def _mk(p):
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def test_shot_planner_groups_by_take(media):
+    res = _analysis(media)
+    assert res["plan_summary"]
+    # The planner (mock follows the fingerprint hint) still yields the 2 alternating takes.
+    assert len(res["setups"]) == 2
+
+
+def test_ai_unavailable_fails_loudly(media, monkeypatch, tmp_path):
+    from app import vision, jobs, main
+    from fastapi.testclient import TestClient
+
+    def boom(*a, **k):
+        raise vision.VisionUnavailable("The Anthropic account is out of credit.")
+    monkeypatch.setattr(vision, "ask", boom)
+    sent = []
+    monkeypatch.setattr(jobs, "post_callback", lambda url, body: sent.append(body))
+    monkeypatch.setattr(main, "fetch_video", lambda *a, **k: Path(media["reel"]))
+    TestClient(main.app).post("/analyze", headers={"x-api-key": "test-key"},
+                              json={"job_id": "j", "callback_url": "http://cb", "upload_id": "u", "video_url": "http://v"})
+    assert sent[0]["status"] == "failed" and "out of credit" in sent[0]["error"], sent[0]
+
+
+def test_partition_problem_reports_gaps():
+    from app.breakdown import _partition_problem
+    assert _partition_problem([[0, 1], [2]], 3) is None
+    assert "missing cuts 3" in _partition_problem([[0, 1]], 3)
+    assert "more than one" in _partition_problem([[0, 1], [1, 2]], 3)

@@ -104,7 +104,7 @@ const HANDLERS: Record<string, Handler> = {
     const v = result.video ?? {};
     await check(await db.from("uploads").update({
       status: "done", error: null, duration: v.duration, width: v.width, height: v.height, fps: v.fps,
-      cut_count: result.cuts.length, setup_count: result.setups.length,
+      cut_count: result.cuts.length, setup_count: result.setups.length, plan_summary: result.plan_summary ?? null,
     }).eq("id", uploadId), "update upload");
 
     // Store the recipe, not the footage: drop the reference video unless told to keep it.

@@ -75,8 +75,10 @@ export default function ShootPlan() {
       )}
       {upload.status === "done" && (
         <div className="stack">
+          {upload.plan_summary && <div className="notice"><strong>{upload.plan_summary}</strong></div>}
           <p className="muted">This reel uses <strong style={{ color: "var(--text)" }}>{upload.cut_count} cuts</strong> from
-            just <strong style={{ color: "var(--text)" }}>{upload.setup_count} setups</strong>. Film each setup once, for the time shown.</p>
+            just <strong style={{ color: "var(--text)" }}>{upload.setup_count} {upload.setup_count === 1 ? "take" : "takes"}</strong>.
+            Film each one once, in one continuous take, for the time shown. The app cuts it up to match.</p>
           {setups.map((s) => (
             <article key={s.id} className="card row" style={{ alignItems: "flex-start" }}>
               <Thumb path={s.thumbnail_path} alt={`Setup ${s.setup_number}`} />

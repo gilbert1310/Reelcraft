@@ -16,7 +16,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from . import assemble as assemble_mod
-from . import breakdown, checks, library
+from . import breakdown, checks, library, vision
 from .config import settings
 from .fetch import LinkFetchError, check_link, fetch_from_link
 from .jobs import UserFacingError, run_job
@@ -100,7 +100,12 @@ def analyze(req: AnalyzeRequest, bg: BackgroundTasks) -> dict:
             raise UserFacingError("That file isn't a video we can read. Try exporting it as MP4.")
         if info.duration > settings.max_video_seconds:
             raise UserFacingError(f"Reels longer than {settings.max_video_seconds // 60} minutes aren't supported.")
-        return breakdown.analyze(path)
+        try:
+            return breakdown.analyze(path)
+        except vision.VisionUnavailable as e:
+            raise UserFacingError(f"The AI step couldn't run: {e}")
+        except vision.VisionRefused:
+            raise UserFacingError("The AI declined to analyse this video. Try a different reel.")
 
     return _start(bg, req, "analysis", work, {"upload_id": req.upload_id})
 

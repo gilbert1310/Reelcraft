@@ -3,7 +3,7 @@ export type UploadStatus = "queued" | "processing" | "done" | "failed" | "link_f
 export interface Upload {
   id: string; user_id: string; file_name: string | null; storage_path: string | null; source_url: string | null;
   status: UploadStatus; error: string | null; duration: number | null; cut_count: number | null;
-  setup_count: number | null; created_at: string; updated_at: string;
+  setup_count: number | null; plan_summary: string | null; created_at: string; updated_at: string;
 }
 
 export interface Setup {
