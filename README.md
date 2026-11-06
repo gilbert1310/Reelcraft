@@ -3,10 +3,14 @@
 Break a reel down into a smart shoot plan, guide the videographer while filming, then assemble
 their real footage into a finished edit, with a DaVinci Resolve timeline for the final polish.
 
-This repo is the backend for all three stages of the ReelCraft Build Plan, plus the Lovable prompts
-for the front end.
+This repo has the whole app for all three stages of the ReelCraft Build Plan: the web app, the
+video service and the Supabase backend. Lovable isn't needed (`lovable/PROMPTS.md` is kept only as
+an alternative).
 
 ```
+web/                  The app (React + TypeScript + Vite), mobile-first. Talks to Supabase only.
+  src/pages/          Sign-in, Home, Breakdown, Shoot Plan, Shoots, Project, Shoot Mode, Footage, Edit, Library
+  tests/e2e.mjs       Clicks through every flow in a phone-sized browser against a fake Supabase
 service/              Python video service (FastAPI). One service, one endpoint per job.
   app/breakdown.py    Stage 1: split → fingerprint → group into setups → describe → edit pattern + recipe
   app/checks.py       Stage 2: on-set technical + AI coverage checks, setup suggestion for imports
@@ -99,12 +103,30 @@ because CLIP and 4K frames are memory-hungry. Environment variables (see `servic
 
 Check it's up at `GET /health`.
 
-### 3. Lovable
+### 3. Web app (Vercel)
 
-Connect the Lovable project to the Supabase project, then paste the prompts in
-`lovable/PROMPTS.md` one at a time.
+Import the repo in Vercel with **Root Directory `web`** (Vite is detected automatically) and set:
+
+| Variable | Value |
+|---|---|
+| `VITE_SUPABASE_URL` | `https://YOUR_PROJECT_REF.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | the project's anon / publishable key |
+
+Then in Supabase › Authentication › URL Configuration, set the Site URL to your Vercel URL so
+sign-in links come back to the app. Shoot Mode needs HTTPS for the camera, which Vercel provides.
+
+Run it locally with `cd web && npm install && npm run dev` (put the two variables in `web/.env`).
 
 ## Run the tests locally
+
+Web app (builds against a fake Supabase, then clicks through every screen at iPhone size,
+using Chromium's fake camera for Shoot Mode):
+
+```bash
+cd web && VITE_SUPABASE_URL=https://mock.supabase.co VITE_SUPABASE_ANON_KEY=anon npx vite build && (npx vite preview --port 4173 &) && node tests/e2e.mjs
+```
+
+Video service:
 
 ```bash
 cd service && python -m venv .venv && . .venv/bin/activate && pip install -r requirements-dev.txt

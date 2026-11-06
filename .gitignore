@@ -6,3 +6,9 @@ __pycache__/
 *.mp4
 *.mov
 supabase/.temp/
+node_modules/
+web/dist/
+web/tests/screenshots/
+web/.env
+web/.env.local
+web/tsconfig.tsbuildinfo

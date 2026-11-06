@@ -1,0 +1,84 @@
+import { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { supabase } from "../lib/supabase";
+import { action, must } from "../lib/api";
+import { useLive, useLoad } from "../lib/hooks";
+import type { Setup, Upload } from "../lib/types";
+import { AngleBadge, Busy, ErrorBox, Page, Thumb } from "../components/ui";
+
+export default function ShootPlan() {
+  const { uploadId } = useParams();
+  const nav = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const { data, reload } = useLoad(async () => {
+    const upload = must(await supabase.from("uploads").select("*").eq("id", uploadId!).single()) as Upload;
+    const setups = upload.status === "done"
+      ? must(await supabase.from("setups").select("*").eq("upload_id", uploadId!).order("setup_number")) as Setup[]
+      : [];
+    return { upload, setups };
+  }, [uploadId]);
+  const busy = !data || data.upload.status === "queued" || data.upload.status === "processing";
+  useLive("uploads", busy ? `id=eq.${uploadId}` : null, reload, 3000);
+
+  async function retry() {
+    setError(null);
+    try {
+      await action("start-analysis", { upload_id: uploadId });
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function startShooting() {
+    try {
+      const p = must(await supabase.from("projects").insert({
+        upload_id: uploadId, title: data?.upload.file_name || "My shoot",
+      }).select("id").single()) as { id: string };
+      nav(`/project/${p.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  if (!data) return <Page back="/"><Busy title="Loading…" /></Page>;
+  const { upload, setups } = data;
+
+  return (
+    <Page back="/" title="Your Shoot Plan">
+      {busy && <Busy title="Breaking down your reel…" detail="Finding the cuts and grouping them into setups. This takes a minute or two." />}
+      {upload.status === "failed" && (
+        <div className="stack">
+          <ErrorBox>{upload.error || "Something went wrong."}</ErrorBox>
+          <button className="btn primary block" onClick={retry}>Try again</button>
+        </div>
+      )}
+      {upload.status === "link_failed" && (
+        <div className="stack">
+          <ErrorBox>We couldn't grab that video. It may be private, or the platform blocked it. Screen-record it and upload it instead.</ErrorBox>
+          <button className="btn primary block" onClick={() => nav("/breakdown?tab=upload")}>Upload instead</button>
+        </div>
+      )}
+      {upload.status === "done" && (
+        <div className="stack">
+          <p className="muted">This reel uses <strong style={{ color: "var(--text)" }}>{upload.cut_count} cuts</strong> from
+            just <strong style={{ color: "var(--text)" }}>{upload.setup_count} setups</strong>. Film each setup once, for the time shown.</p>
+          {setups.map((s) => (
+            <article key={s.id} className="card row" style={{ alignItems: "flex-start" }}>
+              <Thumb path={s.thumbnail_path} alt={`Setup ${s.setup_number}`} />
+              <div className="grow stack" style={{ gap: 6 }}>
+                <div className="row" style={{ gap: 8 }}><strong>Setup {s.setup_number}</strong><AngleBadge angle={s.angle} /></div>
+                <p style={{ margin: 0 }}>{s.description}</p>
+                <span className="small"><strong>Film about {Math.round(Number(s.film_duration_seconds))} seconds</strong></span>
+                {s.beginner_tip && <div className="tip"><span aria-hidden>💡</span><span>{s.beginner_tip}</span></div>}
+              </div>
+            </article>
+          ))}
+          <ErrorBox>{error}</ErrorBox>
+          <button className="btn primary big block" onClick={startShooting}>Start Shooting</button>
+        </div>
+      )}
+      {busy && <ErrorBox>{error}</ErrorBox>}
+    </Page>
+  );
+}
