@@ -116,9 +116,15 @@ def normalise(path: str | Path) -> Path:
         return path
     out = path.with_name(path.stem + "_norm.mp4")
     # Few threads and a short lookahead keep ffmpeg's memory use low on small servers.
-    ffmpeg("-threads", "2", "-i", str(path), "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264",
-           "-preset", "veryfast", "-crf", "17", "-x264-params", "rc-lookahead=10:threads=2",
-           "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", str(out))
+    # Cap the size (NORMALISE_MAX_SIDE, default 1920): encoding 4K needs more memory than small
+    # servers have, and 1080x1920 is the output size anyway.
+    import os
+    side = int(os.getenv("NORMALISE_MAX_SIDE", "1920"))
+    vf = (f"scale='min(iw,{side})':'min(ih,{side})':force_original_aspect_ratio=decrease,"
+          "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p")
+    ffmpeg("-threads", "2", "-i", str(path), "-map", "0:v:0", "-map", "0:a?", "-vf", vf, "-c:v", "libx264",
+           "-preset", "veryfast", "-crf", "18", "-x264-params", "rc-lookahead=10:threads=2",
+           "-c:a", "aac", "-movflags", "+faststart", str(out))
     return out
 
 

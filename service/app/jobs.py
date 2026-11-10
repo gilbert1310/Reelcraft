@@ -13,6 +13,7 @@ from typing import Callable
 import httpx
 
 from .config import settings
+from .media import MediaError
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,10 @@ def _run(job_id: str, kind: str, callback_url: str, work: Callable[[Path], dict]
     try:
         result = work(tmp)
         body.update(status="done", result=result)
+    except MediaError as e:
+        # Media errors are written for people (e.g. "ran out of memory"), so show them.
+        log.warning("Job %s (%s) media error: %s", job_id, kind, e)
+        body.update(status="failed", error=str(e))
     except UserFacingError as e:
         log.warning("Job %s (%s) failed: %s", job_id, kind, e)
         body.update(status=e.status, error=str(e))

@@ -83,3 +83,13 @@ def test_api_key_paste_mistakes_are_tidied(monkeypatch):
     assert vision.key_status() == "missing"
     body = TestClient(main.app).get("/health").json()
     assert body["anthropic_key"] == "missing" and "sk-ant" not in str(body).replace("start with sk-ant-", "")
+
+
+def test_normalise_caps_size(tmp_path):
+    import subprocess
+    from app.media import normalise, probe
+    big = tmp_path / "big.mkv"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=2160x3840:rate=30:duration=1",
+                    "-c:v", "libx264", "-preset", "ultrafast", str(big)], check=True)
+    info = probe(normalise(big))
+    assert (info.width, info.height) == (1080, 1920)
