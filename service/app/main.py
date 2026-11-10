@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from . import assemble as assemble_mod
 from . import breakdown, checks, library, vision
+from . import media as media_mod
 from .config import settings
 from .fetch import LinkFetchError, check_link, fetch_from_link
 from .jobs import UserFacingError, run_job
@@ -64,6 +65,7 @@ def health() -> dict:
     from . import embed
     return {"ok": True, "vision_provider": settings.vision_provider, "vision_model": settings.vision_model,
             "anthropic_key": vision.key_status(),
+            "memory_limit_mb": media_mod.memory_limit_mb(), "low_memory_mode": media_mod.low_memory(),
             "embedder": settings.embedder, "embedder_loaded": embed._embedder is not None}
 
 

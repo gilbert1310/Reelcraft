@@ -14,7 +14,7 @@ import numpy as np
 
 from .correct import Cam, RenderCut
 from . import effects as fx
-from .media import FrameReader, MediaError, ffmpeg, has_filter
+from .media import FrameReader, MediaError, ffmpeg, has_filter, low_memory, x264
 
 log = logging.getLogger(__name__)
 
@@ -71,8 +71,9 @@ def _prepass(rc: RenderCut, tmp: Path, out_fps: float, extra: float) -> tuple[st
     length = rc.src_len + extra + 1.0
     seg = tmp / f"pre_{rc.order_index}.mp4"
     vf = []
+    lean = low_memory()
     if rc.stabilize:
-        if has_filter("vidstabdetect"):
+        if has_filter("vidstabdetect") and not lean:
             trf = tmp / f"stab_{rc.order_index}.trf"
             ffmpeg("-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", rc.src_path,
                    "-vf", f"vidstabdetect=shakiness=6:result={trf}", "-f", "null", "-")
@@ -81,9 +82,12 @@ def _prepass(rc: RenderCut, tmp: Path, out_fps: float, extra: float) -> tuple[st
             vf.append("deshake")
     if rc.interpolate:
         target = min(240, max(out_fps / rc.speed, out_fps))
-        vf.append(f"minterpolate=fps={target:.3f}:mi_mode=mci:mc_mode=aobmc:vsbmc=1")
-    ffmpeg("-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", rc.src_path, "-vf", ",".join(vf),
-           "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", str(seg))
+        # Motion-compensated interpolation looks best but needs ~900 MB at 1080x1920;
+        # small servers blend frames instead (~100 MB).
+        vf.append(f"framerate=fps={target:.3f}" if lean else
+                  f"minterpolate=fps={target:.3f}:mi_mode=mci:mc_mode=aobmc:vsbmc=1")
+    ffmpeg("-threads", "1" if lean else "2", "-ss", f"{start:.3f}", "-t", f"{length:.3f}", "-i", rc.src_path,
+           "-vf", ",".join(vf), "-an", *x264(16), str(seg))
     return str(seg), start
 
 
@@ -139,8 +143,7 @@ class _Encoder:
                "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}", "-r", f"{fps:.3f}", "-i", "-"]
         if music:
             cmd += ["-i", music, "-map", "0:v", "-map", "1:a", "-shortest", "-c:a", "aac", "-b:a", "160k"]
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart", path]
+        cmd += [*x264(21), "-movflags", "+faststart", path]
         self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         self.count = 0
 

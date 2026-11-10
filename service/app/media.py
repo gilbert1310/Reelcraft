@@ -100,6 +100,38 @@ DECODABLE_CODECS = ("h264", "hevc", "vp9", "mpeg4")
 EIGHT_BIT_420 = ("yuv420p", "yuvj420p", "nv12")
 
 
+def memory_limit_mb() -> int | None:
+    """The container's memory limit, if any (cgroup v2 or v1)."""
+    for f in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            raw = open(f).read().strip()
+        except OSError:
+            continue
+        if raw.isdigit() and int(raw) < 1 << 50:
+            return int(raw) // (1024 * 1024)
+    return None
+
+
+def low_memory() -> bool:
+    """Small servers (under 1.5 GB, e.g. Railway's free plan) use lean encoder settings.
+    Override with LOW_MEMORY=1 or 0."""
+    import os
+    v = os.getenv("LOW_MEMORY")
+    if v is not None:
+        return v.strip().lower() in ("1", "true", "yes", "on")
+    lim = memory_limit_mb()
+    return lim is not None and lim < 1536
+
+
+def x264(crf: int = 18) -> list[str]:
+    """H.264 encoder settings. Lean mode needs ~90 MB at 1080x1920 instead of ~270 MB."""
+    if low_memory():
+        return ["-c:v", "libx264", "-preset", "ultrafast", "-crf", str(crf),
+                "-x264-params", "rc-lookahead=0:threads=1:sliced-threads=0", "-pix_fmt", "yuv420p"]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
+            "-x264-params", "rc-lookahead=10:threads=2", "-pix_fmt", "yuv420p"]
+
+
 def needs_normalising(info: VideoInfo) -> bool:
     """Browser recordings (WebM, often without a duration) and 10-bit camera files decode
     unreliably frame-by-frame; convert only those to 8-bit H.264 MP4. Re-encoding is slow
@@ -122,9 +154,8 @@ def normalise(path: str | Path) -> Path:
     side = int(os.getenv("NORMALISE_MAX_SIDE", "1920"))
     vf = (f"scale='min(iw,{side})':'min(ih,{side})':force_original_aspect_ratio=decrease,"
           "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p")
-    ffmpeg("-threads", "2", "-i", str(path), "-map", "0:v:0", "-map", "0:a?", "-vf", vf, "-c:v", "libx264",
-           "-preset", "veryfast", "-crf", "18", "-x264-params", "rc-lookahead=10:threads=2",
-           "-c:a", "aac", "-movflags", "+faststart", str(out))
+    ffmpeg("-threads", "1" if low_memory() else "2", "-i", str(path), "-map", "0:v:0", "-map", "0:a?", "-vf", vf,
+           *x264(18), "-c:a", "aac", "-movflags", "+faststart", str(out))
     return out
 
 

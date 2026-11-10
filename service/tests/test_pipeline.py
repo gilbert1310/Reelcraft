@@ -299,3 +299,17 @@ def test_every_transition_effect_and_look_renders(media, tmp_path):
     if sheet:
         import shutil
         shutil.copy(out, sheet)
+
+
+def test_low_memory_mode_renders_slow_motion_and_stabilised_cuts(media, tmp_path, monkeypatch):
+    from app.correct import RenderCut
+    from app.media import x264
+    from app.render import render
+    monkeypatch.setenv("LOW_MEMORY", "1")
+    assert "ultrafast" in x264()
+    cuts = [RenderCut(order_index=0, src_path=str(media["user_a"]), src_name="a.mp4", src_w=540, src_h=960, src_fps=30,
+                      src_in=0.5, speed=0.5, out_len=1.0, interpolate=True),
+            RenderCut(order_index=1, src_path=str(media["user_b"]), src_name="b.mp4", src_w=540, src_h=960, src_fps=30,
+                      src_in=0.5, speed=1.0, out_len=1.0, stabilize=True, transition_in="dissolve")]
+    stats = render(cuts, str(tmp_path / "lm.mp4"), 270, 480, 30, tmp_path)
+    assert stats["frames"] == 60

@@ -11,7 +11,7 @@ import numpy as np
 from .config import settings
 from .correct import RenderCut, plan_cut
 from .matching import ClipIndex, index_clip, match_sequence
-from .media import FrameReader, download, ffmpeg, normalise, probe, to_jpeg, upload
+from .media import FrameReader, download, ffmpeg, normalise, probe, to_jpeg, upload, x264
 from .motion import ShotStats, analyze_segment
 from .render import _Source, render
 from .timeline import edit_decision_summary, fcpxml, otio_json
@@ -59,7 +59,7 @@ def _thumb(rc: RenderCut, w: int, h: int, fps: float) -> str | None:
 def _black_clip(tmp: Path, seconds: float, w: int, h: int) -> Clip:
     path = tmp / "graphic_placeholder.mp4"
     ffmpeg("-f", "lavfi", "-i", f"color=c=black:s={w - w % 2}x{h - h % 2}:r=30:d={max(seconds, 1.0):.2f}",
-           "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", str(path))
+           *x264(23), str(path))
     return Clip("graphic", str(path), "GRAPHIC_PLACEHOLDER.mp4", None)
 
 
